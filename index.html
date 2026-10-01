@@ -15,6 +15,7 @@
     <div class="marque">🧾 Générateur de factures</div>
     <div class="actions">
       <button id="btn-profil" class="btn btn-secondaire" type="button">⚙ Mon entreprise</button>
+      <button id="btn-logo" class="btn btn-secondaire" type="button">🖼 Ajuster le logo</button>
       <button id="btn-ia" class="btn btn-secondaire" type="button">✨ Coller la commande (IA)</button>
       <button id="btn-nouvelle" class="btn btn-secondaire" type="button">Nouvelle facture</button>
       <button id="btn-pdf" class="btn btn-principal" type="button">Télécharger le PDF</button>
@@ -41,6 +42,20 @@
       </div>
     </section>
   </main>
+
+  <!-- Réglage du logo : taille et position, enregistré tout de suite -->
+  <aside id="panneau-logo" class="panneau no-print" hidden>
+    <div class="panneau-titre">🖼 Ajuster le logo <button id="btn-logo-fermer" class="btn btn-icone" type="button" title="Fermer">✕</button></div>
+    <p class="panneau-aide">Tu peux aussi faire glisser le logo directement sur la facture. Tout est enregistré automatiquement.</p>
+    <label>Taille <span id="v-taille"></span><input id="r-taille" type="range" min="5" max="60" step="0.5"></label>
+    <label>Gauche ↔ droite <span id="v-x"></span><input id="r-x" type="range" min="-10" max="140" step="0.5"></label>
+    <label>Haut ↕ bas <span id="v-y"></span><input id="r-y" type="range" min="-8" max="40" step="0.5"></label>
+    <div class="panneau-actions">
+      <button id="btn-logo-rogner" class="btn btn-secondaire" type="button" title="Enlève le blanc / transparent autour du logo">✂ Rogner les marges vides</button>
+      <button id="btn-logo-reset" class="btn btn-secondaire" type="button">Réinitialiser</button>
+    </div>
+    <p id="etat-logo" class="panneau-aide"></p>
+  </aside>
 
   <!-- Coller une commande : l'IA pré-remplit UNIQUEMENT la partie qui change -->
   <dialog id="dlg-ia" class="no-print">
@@ -113,6 +128,15 @@
       </fieldset>
 
       <p id="erreur-profil" class="erreur" hidden></p>
+      <fieldset>
+        <legend>Sauvegarde</legend>
+        <p>Tes réglages sont gardés dans ce navigateur. Garde aussi une copie dans un fichier, pour les remettre sur un autre appareil en 1 clic.</p>
+        <div class="logo-ligne">
+          <button id="btn-sauver" type="button" class="btn btn-secondaire">💾 Télécharger mes réglages</button>
+          <label class="fichier">📂 Restaurer un fichier de réglages<input id="fichier-reglages" type="file" accept="application/json,.json"></label>
+        </div>
+      </fieldset>
+
       <div class="dlg-actions">
         <button id="btn-profil-reset" type="button" class="btn btn-secondaire">Valeurs par défaut</button>
         <button value="annuler" class="btn btn-secondaire">Annuler</button>

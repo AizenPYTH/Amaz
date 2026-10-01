@@ -122,6 +122,23 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .etat { font-size: 13px; color: var(--doux); }
 @media (max-width: 560px) { .dlg .grille { grid-template-columns: 1fr; } }
 
+.panneau {
+  position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(340px, calc(100vw - 32px));
+  background: var(--panneau); color: var(--texte); border: 1px solid var(--bord); border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 12px 14px 14px;
+}
+.panneau[hidden] { display: none; }
+.panneau-titre { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.panneau-titre .btn { padding: 2px 8px; }
+.panneau-aide { font-size: 12.5px; color: var(--doux); margin: 6px 0 4px; }
+.panneau label { display: block; font-size: 13px; margin-top: 10px; }
+.panneau label span { float: right; color: var(--doux); }
+.panneau input[type=range] { width: 100%; margin-top: 4px; accent-color: var(--accent); }
+.panneau-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.panneau-actions .btn { font-size: 13px; padding: 6px 10px; }
+body.reglage-logo .f-logo { cursor: grab; outline: 2px dashed var(--accent); outline-offset: 2px; touch-action: none; }
+body.reglage-logo .f-logo:active { cursor: grabbing; }
+
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto auto; }
   .chat { border-right: 0; border-bottom: 1px solid var(--bord); max-height: 62vh; min-height: 360px; }

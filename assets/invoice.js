@@ -133,11 +133,11 @@
       .join("");
 
     return `
-    <div class="facture" style="--couleur:${esc(P.couleur || "#1f6aa8")}">
+    <div class="facture" style="--couleur:${esc(P.couleur || "#1f6aa8")};--logo-h:${Number(P.logoTaille) || 15}mm;--logo-x:${Number(P.logoX) || 0}mm;--logo-y:${Number(P.logoY) || 0}mm">
       <div class="f-bande"></div>
 
       <header class="f-entete">
-        ${P.logo ? `<img class="f-logo" src="${esc(P.logo)}" alt="Logo">` : `<div></div>`}
+        ${P.logo ? `<img class="f-logo" src="${esc(P.logo)}" alt="Logo" draggable="false">` : `<div></div>`}
         <div class="f-titre">Facture</div>
       </header>
 

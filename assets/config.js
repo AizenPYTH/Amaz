@@ -13,6 +13,9 @@
 
 window.FACTURE_CONFIG = {
   logo: "assets/logo.svg",
+  logoTaille: 15, // hauteur du logo en mm
+  logoX: 0, // décalage horizontal en mm (+ = vers la droite)
+  logoY: 0, // décalage vertical en mm (+ = vers le bas)
   couleur: "#1f6aa8", // couleur de la bande en haut de la facture
 
   // Bloc « Vendu par » + encadré « Payé »

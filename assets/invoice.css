@@ -27,7 +27,10 @@
 
 /* Logo + "Facture" */
 .f-entete { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 9mm; }
-.f-logo { max-height: 15mm; max-width: 75mm; object-fit: contain; object-position: left top; }
+.f-logo {
+  height: var(--logo-h, 15mm); width: auto; max-width: 150mm; object-fit: contain; object-position: left top;
+  position: relative; left: var(--logo-x, 0); top: var(--logo-y, 0);
+}
 .f-titre { font-size: 17pt; padding-top: 1mm; }
 
 /* Adresse client + encadré Payé */

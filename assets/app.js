@@ -473,7 +473,46 @@
     c.width = Math.round(img.width * e);
     c.height = Math.round(img.height * e);
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL("image/png");
+    return (await rognerImage(c.toDataURL("image/png"))).src;
+  }
+
+  // Enlève le blanc / transparent autour d'une image (souvent la raison d'un logo qui paraît tout petit).
+  async function rognerImage(src) {
+    const img = new Image();
+    await new Promise((ok, ko) => ((img.onload = ok), (img.onerror = () => ko(new Error("Logo illisible."))), (img.src = src)));
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    if (!w || !h) return { src, rogne: false };
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const blanc = px[i] > 242 && px[i + 1] > 242 && px[i + 2] > 242;
+        if (px[i + 3] > 16 && !blanc) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return { src, rogne: false };
+    x0 = Math.max(0, x0 - 2);
+    y0 = Math.max(0, y0 - 2);
+    x1 = Math.min(w - 1, x1 + 2);
+    y1 = Math.min(h - 1, y1 + 2);
+    if (x0 === 0 && y0 === 0 && x1 === w - 1 && y1 === h - 1) return { src, rogne: false };
+    const o = document.createElement("canvas");
+    o.width = x1 - x0 + 1;
+    o.height = y1 - y0 + 1;
+    o.getContext("2d").drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+    return { src: o.toDataURL("image/png"), rogne: true };
   }
 
   async function fichierPourIA(input) {
@@ -559,8 +598,16 @@
     $("#dlg-profil").showModal();
   }
 
+  // Enregistre seulement les réglages donnés, sans toucher au reste du profil.
+  function sauverProfil(modifs) {
+    const nouveau = Object.assign(store.get("facture.profil", {}), modifs);
+    const ok = store.set("facture.profil", nouveau);
+    P = fusionner(profilParDefaut(), nouveau, true);
+    return ok;
+  }
+
   function enregistrerProfil() {
-    const nouveau = { logo: logoBrouillon };
+    const nouveau = { ...store.get("facture.profil", {}), logo: logoBrouillon };
     for (const [id, chemin] of Object.entries(champsProfil)) set(nouveau, chemin, $("#" + id).value.trim());
     if (!store.set("facture.profil", nouveau)) {
       $("#erreur-profil").textContent = "Impossible d'enregistrer (logo trop lourd ou stockage bloqué par le navigateur).";
@@ -595,6 +642,101 @@
       erreur.hidden = false;
     }
   }
+
+  // ---------- Sauvegarde / restauration des réglages dans un fichier ----------
+  function telechargerReglages() {
+    const contenu = { version: 1, profil: store.get("facture.profil", {}), compteur: compteur() };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(contenu, null, 2)], { type: "application/json" }));
+    a.download = "reglages-factures.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function restaurerReglages(f) {
+    const erreur = $("#erreur-profil");
+    erreur.hidden = true;
+    try {
+      let json;
+      try {
+        json = JSON.parse(await f.text());
+      } catch {
+        json = null;
+      }
+      if (!json || typeof json.profil !== "object") throw new Error("Ce fichier n'est pas un fichier de réglages.");
+      if (!store.set("facture.profil", json.profil)) throw new Error("Impossible d'enregistrer dans ce navigateur.");
+      if (Number.isInteger(json.compteur)) store.set("facture.compteur", json.compteur);
+      P = fusionner(profilParDefaut(), json.profil, true);
+      remplirFormProfil(P);
+      rafraichir(true);
+      $("#etat-profil").textContent = "✔ Réglages restaurés.";
+    } catch (e) {
+      erreur.textContent = e.message;
+      erreur.hidden = false;
+    }
+  }
+
+  // ---------- Panneau « Ajuster le logo » ----------
+  const reglagesLogo = [
+    ["r-taille", "logoTaille", "v-taille", 5, 60],
+    ["r-x", "logoX", "v-x", -10, 140],
+    ["r-y", "logoY", "v-y", -8, 40],
+  ];
+  let minuterieLogo;
+
+  function afficherReglagesLogo() {
+    for (const [r, cle, v] of reglagesLogo) {
+      const n = Number(P[cle]) || 0;
+      $("#" + r).value = n;
+      $("#" + v).textContent = `${n.toLocaleString("fr-FR")} mm`;
+    }
+  }
+
+  function changerLogo(modifs) {
+    for (const [, cle, , min, max] of reglagesLogo) {
+      if (cle in modifs) P[cle] = Math.min(max, Math.max(min, Math.round(Number(modifs[cle]) * 2) / 2));
+    }
+    const f = feuille.querySelector(".facture");
+    if (f) {
+      f.style.setProperty("--logo-h", `${P.logoTaille}mm`);
+      f.style.setProperty("--logo-x", `${P.logoX}mm`);
+      f.style.setProperty("--logo-y", `${P.logoY}mm`);
+    }
+    afficherReglagesLogo();
+    ajusterApercu();
+    clearTimeout(minuterieLogo);
+    minuterieLogo = setTimeout(() => sauverProfil({ logoTaille: P.logoTaille, logoX: P.logoX, logoY: P.logoY }), 200);
+  }
+
+  function ouvrirPanneauLogo() {
+    afficherReglagesLogo();
+    $("#etat-logo").textContent = "";
+    $("#panneau-logo").hidden = false;
+    document.body.classList.add("reglage-logo");
+  }
+
+  function fermerPanneauLogo() {
+    $("#panneau-logo").hidden = true;
+    document.body.classList.remove("reglage-logo");
+  }
+
+  // Glisser le logo directement sur la facture
+  let glisse = null;
+  feuille.addEventListener("pointerdown", (e) => {
+    if (!document.body.classList.contains("reglage-logo") || !e.target.classList.contains("f-logo")) return;
+    e.preventDefault();
+    const echelle = feuille.getBoundingClientRect().width / feuille.offsetWidth;
+    glisse = { x: e.clientX, y: e.clientY, lx: Number(P.logoX) || 0, ly: Number(P.logoY) || 0, pxParMm: (96 / 25.4) * echelle };
+    e.target.setPointerCapture(e.pointerId);
+  });
+  feuille.addEventListener("pointermove", (e) => {
+    if (!glisse) return;
+    changerLogo({
+      logoX: glisse.lx + (e.clientX - glisse.x) / glisse.pxParMm,
+      logoY: glisse.ly + (e.clientY - glisse.y) / glisse.pxParMm,
+    });
+  });
+  ["pointerup", "pointercancel"].forEach((t) => feuille.addEventListener(t, () => (glisse = null)));
 
   // ---------- Événements ----------
   $("#saisie").addEventListener("submit", (e) => {
@@ -642,6 +784,34 @@
     } catch (err) {
       $("#erreur-profil").textContent = err.message;
       $("#erreur-profil").hidden = false;
+    }
+  });
+
+  $("#btn-sauver").addEventListener("click", telechargerReglages);
+  $("#fichier-reglages").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (f) restaurerReglages(f);
+  });
+
+  $("#btn-logo").addEventListener("click", () => ($("#panneau-logo").hidden ? ouvrirPanneauLogo() : fermerPanneauLogo()));
+  $("#btn-logo-fermer").addEventListener("click", fermerPanneauLogo);
+  for (const [r, cle] of reglagesLogo) $("#" + r).addEventListener("input", (e) => changerLogo({ [cle]: e.target.value }));
+  $("#btn-logo-reset").addEventListener("click", () =>
+    changerLogo({ logoTaille: C.logoTaille ?? 15, logoX: C.logoX ?? 0, logoY: C.logoY ?? 0 })
+  );
+  $("#btn-logo-rogner").addEventListener("click", async () => {
+    const etat = $("#etat-logo");
+    if (!P.logo) return (etat.textContent = "Aucun logo : ajoute-le dans « ⚙ Mon entreprise ».");
+    if (/^data:image\/svg|\.svg$/i.test(P.logo)) return (etat.textContent = "Logo SVG : pas besoin de rogner, utilise juste la taille.");
+    try {
+      const { src, rogne } = await rognerImage(P.logo);
+      if (!rogne) return (etat.textContent = "Il n'y a pas de marge vide à enlever.");
+      if (!sauverProfil({ logo: src })) return (etat.textContent = "Impossible d'enregistrer dans ce navigateur.");
+      rafraichir(true);
+      etat.textContent = "✔ Marges vides enlevées : le logo prend maintenant toute la place.";
+    } catch (e) {
+      etat.textContent = e.message;
     }
   });
 

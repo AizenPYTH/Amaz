@@ -12,6 +12,9 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
   Bouton « Remplir automatiquement depuis MA facture » : l'IA lit ta facture (PDF/image) et remplit ces champs.
 - **✨ Coller la commande (IA)** : tu colles le mail de commande (ou une capture), l'IA pré-remplit UNIQUEMENT la partie qui change
   (client, adresses, commande, articles, prix). Elle ne peut pas toucher au logo ni à ton entreprise : ces champs ne lui sont même pas demandés.
+- **🖼 Ajuster le logo** : taille et position avec des curseurs, ou en faisant glisser le logo sur la facture ;
+  « Rogner les marges vides » enlève le blanc autour du logo (souvent la cause d'un logo qui paraît minuscule)
+- **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo et de tes infos dans un fichier, à restaurer en 1 clic
 - Une fois la facture finie, tu peux cliquer dans la facture pour corriger un détail avant le PDF
 
 ## Mettre en ligne sur Vercel
@@ -30,6 +33,13 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
 | Logo, couleur, « Vendu par », mentions, pied de page | sur le site : **⚙ Mon entreprise** (gardé dans ton navigateur) |
 | Les mêmes valeurs, pour tous tes appareils | `assets/config.js` (et ton logo à la place de `assets/logo.svg`) |
 | Disposition de la facture | `assets/invoice.js` (contenu) et `assets/invoice.css` (mise en page) |
+
+## Est-ce que je perds mes réglages en redéployant ?
+
+Non. Tes réglages sont gardés dans ton navigateur, pour l'adresse du site. Un nouveau déploiement ne les efface pas,
+**à condition d'ouvrir toujours la même adresse** (celle de production, ex : `ton-projet.vercel.app`).
+Les adresses de prévisualisation de Vercel (`ton-projet-xxxx-....vercel.app`) sont considérées comme d'autres sites : tes réglages n'y sont pas.
+Ils sont perdus seulement si tu vides les données du navigateur, ou sur un autre appareil : d'où le bouton « 💾 Télécharger mes réglages ».
 
 ## Télécharger le PDF
 
