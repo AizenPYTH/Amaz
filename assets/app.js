@@ -145,13 +145,6 @@
 
   const nomComplet = (d) => [d.client?.prenom, d.client?.nom].filter(Boolean).join(" ");
 
-  function referenceAleatoire() {
-    const a = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
-    const r = new Uint32Array(16);
-    crypto.getRandomValues(r);
-    return Array.from(r, (x) => a[x % a.length]).join("");
-  }
-
   const compteur = () => store.get("facture.compteur", 0);
   const prochainNumero = () => P.prefixeFacture + pad(compteur() + 1, P.chiffresFacture);
 
@@ -185,7 +178,7 @@
     livraisonIdentique: null,
     livraison: { pays: "FR" },
     commande: {},
-    facture: { referencePaiement: referenceAleatoire() },
+    facture: {},
     articles: [{}],
     fraisLivraison: null,
     budget: null, // { montant, type: "TTC" | "HT" | "TVA" } — budget donné par le client
@@ -299,10 +292,8 @@
       q("commande.par", "Commandé par ?", { defaut: nomComplet }),
       q("facture.numero", "Numéro de la facture ?", { defaut: prochainNumero }),
       q("facture.date", "Date de la facture / de la livraison ?", { choix: ["Aujourd'hui"], defaut: aujourdhui, transformer: lireDate }),
-      q("facture.referencePaiement", "Référence de paiement ?", {
-        choix: ["Nouvelle référence au hasard"],
-        defaut: () => referenceAleatoire(),
-        transformer: (v) => (/^nouvelle r/i.test(v) ? referenceAleatoire() : v),
+      q("facture.referencePaiement", "Référence du paiement reçu (n° de virement, de transaction carte…) ? (facultatif — « - » si aucune)", {
+        optionnel: true,
       })
     );
 
@@ -614,17 +605,80 @@
     poser();
   }
 
-  function telechargerPDF() {
+  function chargerScript(src) {
+    return new Promise((ok, ko) => {
+      if (document.querySelector(`script[src="${src}"]`)) return ok();
+      const sc = document.createElement("script");
+      sc.src = src;
+      sc.onload = ok;
+      sc.onerror = () => ko(new Error("Impossible de charger le générateur de PDF."));
+      document.head.appendChild(sc);
+    });
+  }
+
+  // Télécharge directement la facture en fichier PDF (sans passer par l'imprimante).
+  async function telechargerPDF() {
     // Mémorise le compteur de factures
     const num = data.facture?.numero || "";
     if (num.startsWith(P.prefixeFacture)) {
       const v = parseInt(num.slice(P.prefixeFacture.length), 10);
       if (!isNaN(v)) store.set("facture.compteur", Math.max(v, compteur()));
     }
-    const titre = document.title;
-    document.title = `Facture ${num}`.trim();
-    window.print();
-    setTimeout(() => (document.title = titre), 500);
+
+    const btn = $("#btn-pdf");
+    const texte = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Création du PDF…";
+    // Copie de la facture, à taille réelle, hors de l'écran (garde les corrections faites à la main)
+    const zone = document.createElement("div");
+    zone.style.cssText = "position:fixed;left:-10000px;top:0;";
+    const page = document.createElement("div");
+    page.className = "page-a4 pour-pdf";
+    page.innerHTML = feuille.innerHTML;
+    zone.appendChild(page);
+    document.body.appendChild(zone);
+    try {
+      await chargerScript("assets/vendor/html2pdf.bundle.min.js");
+      await Promise.all(
+        [...page.querySelectorAll("img")].map((img) => (img.complete ? null : new Promise((ok) => (img.onload = img.onerror = ok))))
+      );
+      const nomFichier = `Facture ${num}`.trim().replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
+      const travail = window
+        .html2pdf()
+        .set({
+          margin: 0,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: { scale: 3, useCORS: true, backgroundColor: "#ffffff", logging: false },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css"] },
+        })
+        .from(page)
+        .toPdf();
+      const pdf = await travail.get("pdf");
+
+      // Si la facture dépasse un peu la page (beaucoup de produits), on la réduit pour qu'elle tienne sur 1 page.
+      const hauteurA4 = (297 * 96) / 25.4;
+      const hauteur = page.scrollHeight;
+      if (hauteur <= hauteurA4 * 1.3) {
+        while (pdf.getNumberOfPages() > 1) pdf.deletePage(pdf.getNumberOfPages());
+        if (hauteur > hauteurA4 + 1) {
+          const canvas = await travail.get("canvas");
+          const largeur = 210 * (hauteurA4 / hauteur);
+          pdf.setPage(1);
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(0, 0, 210, 297, "F");
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", (210 - largeur) / 2, 0, largeur, 297);
+        }
+      }
+      pdf.save(nomFichier);
+    } catch (e) {
+      bulle(`${e.message || "Erreur PDF"} — j'ouvre l'impression à la place : choisis « Enregistrer au format PDF ».`, "erreur");
+      window.print();
+    } finally {
+      zone.remove();
+      btn.disabled = false;
+      btn.textContent = texte;
+    }
   }
 
   // ---------- Fichiers ----------

@@ -26,7 +26,7 @@
 .f-bande { position: absolute; left: 0; right: 0; top: 0; height: 4mm; background: var(--couleur); }
 
 /* Logo + "Facture" */
-.f-entete { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 9mm; }
+.f-entete { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 7mm; }
 .f-logo {
   height: var(--logo-h, 15mm); width: auto; max-width: 150mm; object-fit: contain; object-position: left top;
   position: relative; left: var(--logo-x, 0); top: var(--logo-y, 0);
@@ -34,7 +34,7 @@
 .f-titre { font-size: 17pt; padding-top: 1mm; }
 
 /* Adresse client + encadré Payé */
-.f-haut { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4mm; }
+.f-haut { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 2mm; }
 .f-destinataire { font-size: 11pt; line-height: 1.2; padding-left: 11mm; margin-bottom: 1mm; }
 .f-paye {
   width: 98mm; box-sizing: border-box; padding: 3mm 3.5mm 2.5mm;
@@ -45,18 +45,18 @@
 .f-paye-infos td { padding: 1.4mm 1mm 0; }
 .f-paye-infos td:last-child { text-align: right; white-space: nowrap; }
 
-.f-contact { margin: 7mm 0 3mm; }
+.f-contact { margin: 5mm 0 2.5mm; }
 
 /* 3 colonnes d'adresses */
 .f-trois {
   display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm;
   border-top: 1px solid #b9b9b9; border-bottom: 1px solid #b9b9b9; padding: 3.5mm 0 3mm;
-  line-height: 1.8;
+  line-height: 1.6;
 }
 .f-trois h3 { font-size: 11pt; line-height: 1.4; margin-bottom: .5mm; }
 
 /* Informations de la commande */
-.f-commande { padding: 3.5mm 0 6mm; border-bottom: 1px solid #b9b9b9; }
+.f-commande { padding: 3mm 0 4mm; border-bottom: 1px solid #b9b9b9; }
 .f-commande h2 { font-size: 11pt; margin-bottom: 1.5mm; }
 .f-commande td { padding: .9mm 0; }
 .f-commande td:first-child { width: 47mm; }
@@ -66,9 +66,9 @@
 .f-articles { width: 100%; }
 .f-articles th { font-weight: 400; padding: 3mm 1.5mm 2.5mm; vertical-align: top; line-height: 1.75; }
 .f-articles th.desc { text-align: left; }
-.f-articles td { padding: 2.5mm 1.5mm; vertical-align: top; line-height: 1.8; }
+.f-articles td { padding: 2.5mm 1.5mm; vertical-align: top; line-height: 1.5; }
 .f-articles td.desc { width: 47%; }
-.f-art td { background: #f7f7f7; padding-bottom: 6mm; }
+.f-art td { background: #f7f7f7; padding-bottom: 3mm; }
 .f-ref { color: #8a8a8a; margin-top: .5mm; }
 .f-ref b { color: #555; }
 .f-port td { padding-top: 2.5mm; padding-bottom: 1.5mm; border-bottom: 2px solid #e3e3e3; }
@@ -86,10 +86,16 @@
 .f-tva tr:last-child td { border-top: 1px solid #e3e3e3; }
 
 /* Pied de page */
-.f-pied { margin-top: auto; padding-top: 5mm; color: #777; font-size: 6.4pt; }
+.f-pied { margin-top: auto; padding-top: 4mm; color: #777; font-size: 6.4pt; }
 .f-mentions { padding-bottom: 1.2mm; border-bottom: 1px solid #b9b9b9; line-height: 1.2; }
 .f-legal { padding-top: 1.5mm; line-height: 2.1; }
 .f-page { text-align: right; font-size: 10pt; color: #888; margin-top: -4mm; }
+
+/* ---------- Copie utilisée pour fabriquer le fichier PDF ---------- */
+.pour-pdf { min-height: 0; height: auto; }
+.pour-pdf .facture { min-height: calc(295mm - 8mm); }
+.pour-pdf .exemple { color: inherit; font-style: normal; }
+.pour-pdf, .pour-pdf * { outline: none !important; }
 
 /* ---------- Impression / PDF : uniquement la facture ---------- */
 @page { size: A4; margin: 0; }

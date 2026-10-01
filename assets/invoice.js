@@ -147,7 +147,7 @@
         </div>
         <div class="f-paye">
           <div class="f-paye-titre">Payé</div>
-          <div>Référence de paiement ${val(data.facture?.referencePaiement, "ABCD1234EFGH5678")}</div>
+          ${data.facture?.referencePaiement ? `<div>Référence de paiement ${esc(data.facture.referencePaiement)}</div>` : ""}
           <div>Vendu par ${esc(V.nom)}</div>
           ${V.tva ? `<div>TVA ${esc(V.tva)}</div>` : ""}
           <table class="f-paye-infos">

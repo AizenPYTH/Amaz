@@ -47,8 +47,8 @@ Ils sont perdus seulement si tu vides les données du navigateur, ou sur un autr
 
 ## Télécharger le PDF
 
-Clique sur **Télécharger le PDF** puis choisis **« Enregistrer au format PDF »** comme imprimante.
-Dans les options, décoche « En-têtes et pieds de page » si ton navigateur les ajoute.
+Clique sur **Télécharger le PDF** : le fichier `Facture <numéro>.pdf` se télécharge directement (format A4).
+Les corrections faites à la main dans la facture sont incluses.
 
 ## Tester en local
 
