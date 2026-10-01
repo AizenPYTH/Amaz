@@ -5,9 +5,18 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
 
 - Calcul automatique du **HT**, de la **TVA 20 %** et du **TTC** : tu tapes le montant que tu as (`49,90 ttc`, `41,58 ht` ou `8,32 tva`), le reste est calculé
 - « Combien de produits ? » : les lignes sont préparées sur la facture, puis remplies une par une
-- **Budget du client** : tu donnes le budget (`3468,67 ttc`, `2890,56 ht` ou `578,11 tva`), tu entres tes produits ;
-  pour chaque prix tu mets un montant fixe ou « auto », et les prix « auto » sont calculés pour tomber pile sur le budget
-- Numéro de facture automatique (`FR-2026-00001`, `00002`…)
+- **🗂 Plusieurs factures pour un même client** : tu choisis le client et le nombre de factures ; ses infos sont reprises
+  partout. Chaque facture reste indépendante (son n° de commande, ses produits réels), et se prépare séparément.
+  Le total cumulé du lot est affiché en continu.
+- **Budget maximum (HT ou TTC)** : simple contrôle. Le site compare le total réel des factures au budget et
+  indique s'il est dépassé ou combien il reste. Il ne modifie jamais les prix.
+- **Brouillons puis validation** : une facture reste modifiable tant qu'elle est en brouillon. En la validant,
+  elle reçoit son numéro définitif et n'est plus modifiable (pour corriger : un avoir).
+- **Numérotation** : préfixe personnalisable (ex : `FR487D-`) + compteur → `FR487D-00001`, `FR487D-00002`…
+  Numéro attribué uniquement à la validation : uniques, à la suite, sans trou. Le compteur ne peut pas revenir en arrière.
+- **📁 Factures** : tous les lots et factures, statut, totaux HT/TVA/TTC, « Valider et télécharger tout le lot »
+- Les produits déjà facturés sont proposés en raccourci (description, référence et dernier prix, à confirmer)
+- Référence de paiement : uniquement celle que tu saisis (celle du paiement reçu), jamais générée
 - Code postal `750xx` → ville « Paris » proposée automatiquement (pareil pour Lyon et Marseille)
 - Bouton **↩** pour revenir à la question précédente
 - **⚙ Mon entreprise** : la partie FIXE (logo, couleur, bloc « Vendu par », ligne de contact, mentions, pied de page, numérotation).
@@ -18,8 +27,7 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
   « Rogner les marges vides » enlève le blanc autour du logo (souvent la cause d'un logo qui paraît minuscule)
 - **👥 Clients** : chaque client est enregistré à la fin de sa facture. Pour le refacturer : « Nouvelle facture pour le même client »,
   ou choisis-le au début d'une nouvelle facture ; ses adresses sont reprises et on passe directement à la commande et aux produits
-- **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo, de tes infos et de tes clients dans un fichier, à restaurer en 1 clic
-- Une fois la facture finie, tu peux cliquer dans la facture pour corriger un détail avant le PDF
+- **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo, de tes infos, de tes clients et de tes factures dans un fichier, à restaurer en 1 clic
 
 ## Mettre en ligne sur Vercel
 
@@ -47,8 +55,10 @@ Ils sont perdus seulement si tu vides les données du navigateur, ou sur un autr
 
 ## Télécharger le PDF
 
-Clique sur **Télécharger le PDF** : le fichier `Facture <numéro>.pdf` se télécharge directement (format A4).
-Les corrections faites à la main dans la facture sont incluses.
+Clique sur **Valider et télécharger le PDF** : la facture reçoit son numéro, puis le fichier `Facture <numéro>.pdf`
+se télécharge directement (format A4), sans passer par l'imprimante. Une facture déjà validée se retélécharge à l'identique.
+Pour un lot : « 📁 Factures » → « Valider et télécharger tout le lot » (un PDF par facture ; le navigateur peut demander
+d'autoriser les téléchargements multiples).
 
 ## Tester en local
 

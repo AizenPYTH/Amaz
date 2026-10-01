@@ -86,54 +86,16 @@
 
   const euros = (n) => window.Facture.money(n, P.devise);
 
-  function lireBudget(v) {
+  // Budget max donné par le client pour un lot de factures : « 3468,67 ttc » ou « 2890,56 ht ».
+  // C'est un plafond de CONTRÔLE : on compare les ventes réelles, on ne fabrique jamais de prix.
+  function lireBudget(v, typeParDefaut = "TTC") {
     const s = String(v).toLowerCase();
     let n = s.replace(/[^0-9,.]/g, "");
     if (n.includes(",")) n = n.replace(/\./g, "").replace(",", ".");
     const montant = parseFloat(n);
     if (isNaN(montant) || montant <= 0) return null;
-    const type = /\btva\b/.test(s) ? "TVA" : /\bht\b/.test(s) ? "HT" : "TTC";
+    const type = /\bht\b/.test(s) ? "HT" : /\bttc\b/.test(s) ? "TTC" : typeParDefaut;
     return { montant: Math.round(montant * 100) / 100, type };
-  }
-
-  // Calcule les prix des produits pour que la facture tombe pile sur le budget.
-  // - Les produits « auto » se partagent ce qui reste après les produits à prix fixé.
-  // - S'il n'y a aucun produit « auto », tous les prix sont ajustés en gardant leurs proportions.
-  function repartirBudget(d) {
-    const t = P.tauxTVA;
-    const b = d.budget;
-    const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
-    const mesure = () => {
-      const tot = window.Facture.calculer(d, P);
-      return b.type === "HT" ? tot.totalHT : b.type === "TVA" ? tot.totalTVA : tot.totalTTC;
-    };
-    const parEuroHT = b.type === "HT" ? 1 : b.type === "TVA" ? t : 1 + t;
-    const qte = (a) => Number(a.quantite) || 1;
-    const unitHT = (a) => (a.base === "HT" ? Number(a.prix) || 0 : (Number(a.prix) || 0) / (1 + t));
-
-    const auto = d.articles.filter((a) => a.auto);
-    const cibles = auto.length ? auto : d.articles;
-    const poids = cibles.map((a) => (auto.length ? 1 : unitHT(a) * qte(a)));
-    const totalPoids = poids.reduce((x, y) => x + y, 0);
-    if (!totalPoids) return { erreur: "Donne au moins un prix, ou mets un produit en « auto »." };
-
-    // Ce que coûtent déjà le reste de la facture (prix fixés + livraison)
-    cibles.forEach((a) => Object.assign(a, { prix: 0, base: "HT", tvaSaisie: undefined }));
-    const reste = b.montant - mesure();
-    if (reste <= 0) return { erreur: "Les prix fixés et la livraison dépassent déjà le budget." };
-
-    // Répartition, puis ajustement au centime sur les produits en plus petite quantité
-    cibles.forEach((a, i) => (a.prix = r2((reste / parEuroHT) * (poids[i] / totalPoids) / qte(a))));
-    const ordre = [...cibles].sort((x, y) => qte(x) - qte(y));
-    for (let essai = 0; essai < 200; essai++) {
-      const ecart = r2(b.montant - mesure());
-      if (Math.abs(ecart) < 0.005) return { ecart: 0 };
-      const a = ordre[essai % ordre.length];
-      let pas = r2(ecart / parEuroHT / qte(a));
-      if (pas === 0) pas = ecart > 0 ? 0.01 : -0.01;
-      if (a.prix + pas > 0) a.prix = r2(a.prix + pas);
-    }
-    return { ecart: r2(b.montant - mesure()) };
   }
 
   function villeDepuisCP(cp) {
@@ -145,8 +107,15 @@
 
   const nomComplet = (d) => [d.client?.prenom, d.client?.nom].filter(Boolean).join(" ");
 
+  // ---------- Numérotation : unique, continue, attribuée seulement à la validation ----------
   const compteur = () => store.get("facture.compteur", 0);
-  const prochainNumero = () => P.prefixeFacture + pad(compteur() + 1, P.chiffresFacture);
+  const formatNumero = (n) => P.prefixeFacture + pad(n, P.chiffresFacture);
+  function numeroSuivant() {
+    const pris = new Set(listeFactures().filter((f) => f.numero).map((f) => f.numero));
+    let n = compteur() + 1;
+    while (pris.has(formatNumero(n))) n++;
+    return { n, numero: formatNumero(n) };
+  }
 
   const get = (o, chemin) => chemin.split(".").reduce((x, k) => (x == null ? x : x[k]), o);
   function set(o, chemin, v) {
@@ -181,10 +150,49 @@
     facture: {},
     articles: [{}],
     fraisLivraison: null,
-    budget: null, // { montant, type: "TTC" | "HT" | "TVA" } — budget donné par le client
   });
 
-  let data = store.get("facture.brouillon", null) || vide();
+  // ---------- Factures et lots enregistrés ----------
+  //  facture : { id, statut: "brouillon" | "validee", numero, lotId, creee, maj, valideeLe, data }
+  //  lot     : { id, nom, clientInfos, clientSource, budget: { montant, type } | null, creee }
+  const nouvelId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  let factures = store.get("facture.factures", []);
+  let lots = store.get("facture.lots", []);
+  const listeFactures = () => factures;
+  const sauverFactures = () => store.set("facture.factures", factures) && store.set("facture.lots", lots);
+  const factureParId = (id) => factures.find((f) => f.id === id);
+  const lotParId = (id) => lots.find((l) => l.id === id);
+  const facturesDuLot = (lot) => factures.filter((f) => f.lotId === lot.id);
+
+  function creerFacture(d, lotId = null) {
+    const f = { id: nouvelId(), statut: "brouillon", numero: null, lotId, creee: Date.now(), maj: Date.now(), data: d };
+    factures.push(f);
+    return f;
+  }
+
+  const estVide = (f) =>
+    f.statut === "brouillon" && !nomComplet(f.data) && !f.data.commande?.numero && !(f.data.articles || []).some((a) => a.description);
+
+  // Reprise de l'ancien format (un seul brouillon)
+  (function migrer() {
+    const ancien = store.get("facture.brouillon", null);
+    if (ancien && !factures.length) {
+      delete ancien.budget;
+      if (ancien.facture) delete ancien.facture.numero;
+      (ancien.articles || []).forEach((a) => delete a.auto);
+      const f = creerFacture(ancien);
+      store.set("facture.courante", f.id);
+      sauverFactures();
+    }
+    store.del("facture.brouillon");
+  })();
+
+  let courante = factureParId(store.get("facture.courante", null)) || null;
+  if (!courante) {
+    courante = creerFacture(vide());
+    sauverFactures();
+  }
+  let data = courante.data;
   let pos = 0;
   let historique = [];
   let preRempli = false;
@@ -290,7 +298,6 @@
       q("commande.numero", "Numéro de la commande ?"),
       q("commande.date", "Date de la commande ?", { choix: ["Aujourd'hui", "Hier"], defaut: aujourdhui, transformer: lireDate }),
       q("commande.par", "Commandé par ?", { defaut: nomComplet }),
-      q("facture.numero", "Numéro de la facture ?", { defaut: prochainNumero }),
       q("facture.date", "Date de la facture / de la livraison ?", { choix: ["Aujourd'hui"], defaut: aujourdhui, transformer: lireDate }),
       q("facture.referencePaiement", "Référence du paiement reçu (n° de virement, de transaction carte…) ? (facultatif — « - » si aucune)", {
         optionnel: true,
@@ -312,29 +319,23 @@
       apres: (d) => (d.articles.length > 1 ? `OK, je prépare ${d.articles.length} lignes. On les remplit une par une.` : ""),
     });
 
-    liste.push({
-      id: "budget",
-      question:
-        "Le client t'a donné un budget à respecter ? Tape-le suivi de « ttc », « ht » ou « tva » " +
-        "(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). « - » si tu mets les prix toi-même.",
-      optionnel: true,
-      valeur: (d) => (d.budget ? `${String(d.budget.montant).replace(".", ",")} ${d.budget.type.toLowerCase()}` : ""),
-      valider: (v) => (lireBudget(v) ? "" : "Je n'ai pas compris le budget (ex : 3468,67 ttc)."),
-      appliquer: (d, v) => {
-        d.budget = v ? lireBudget(v) : null;
-        if (!d.budget) d.articles.forEach((a) => delete a.auto);
-      },
-      apres: (d) =>
-        d.budget
-          ? `Budget : ${euros(d.budget.montant)} ${d.budget.type}. Pour chaque produit, donne son prix si tu veux le fixer, ou « auto » : je calculerai les prix « auto » pour tomber pile sur le budget.`
-          : "",
-    });
-
     const articles = d.articles && d.articles.length ? d.articles : [{}];
     articles.forEach((_, i) => {
       const n = articles.length > 1 ? ` ${i + 1}/${articles.length}` : "";
       liste.push(
-        q(`articles.${i}.description`, `Produit${n} : nom / description ?`),
+        q(`articles.${i}.description`, `Produit${n} : nom / description ?`, {
+          choix: produitsDejaFactures(d).map((p) => p.description),
+          appliquer: (d, v) => {
+            const a = d.articles[i];
+            // Produit déjà facturé : on propose sa référence et son dernier prix (à confirmer ou changer)
+            const p = a.description === v ? null : produitsDejaFactures(d).find((x) => x.description === v);
+            a.description = v;
+            if (p) {
+              if (!a.reference && p.reference) a.reference = p.reference;
+              if (a.prix == null && p.prix != null) Object.assign(a, { prix: p.prix, base: p.base, tvaSaisie: undefined });
+            }
+          },
+        }),
         q(`articles.${i}.reference`, `Produit${n} : référence (${P.libelleReference}) ? (facultatif)`, { optionnel: true }),
         q(`articles.${i}.quantite`, `Produit${n} : quantité ?`, {
           defaut: () => "1",
@@ -343,35 +344,24 @@
         }),
         {
           id: `articles.${i}.prix`,
-          question: d.budget
-            ? `Produit${n} : prix unitaire ? « auto » = calculé avec le budget, ou tape un prix pour le fixer (ex : 49,90 ttc).`
-            : `Produit${n} : prix unitaire ? Tape le montant suivi de « ttc », « ht » ou « tva » ` +
-              `(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). Sans précision = ${P.prixSaisisEn}.`,
-          choix: d.budget ? ["auto"] : undefined,
-          defaut: (d) => (d.budget ? "auto" : ""),
+          question:
+            `Produit${n} : prix unitaire réel ? Tape le montant suivi de « ttc », « ht » ou « tva » ` +
+            `(ex : 49,90 ttc · 41,58 ht · 8,32 tva). Sans précision = ${P.prixSaisisEn}.`,
           valeur: (d) => {
             const a = d.articles?.[i];
-            if (a?.auto) return "auto";
             if (!a || a.prix == null) return "";
             const virgule = (x) => String(x).replace(".", ",");
             return a.tvaSaisie != null ? `${virgule(a.tvaSaisie)} tva` : `${virgule(a.prix)} ${(a.base || P.prixSaisisEn).toLowerCase()}`;
           },
-          valider: (v) =>
-            (d.budget && /^auto$/i.test(v.trim())) || lirePrix(v) ? "" : "Je n'ai pas compris le montant (ex : 49,90 ttc, 41,58 ht ou 8,32 tva).",
-          appliquer: (d, v) => {
-            const a = d.articles[i];
-            if (d.budget && /^auto$/i.test(v.trim())) {
-              a.auto = true;
-              delete a.prix;
-              delete a.tvaSaisie;
-            } else Object.assign(a, lirePrix(v), { auto: false });
-          },
+          valider: (v) => (lirePrix(v) ? "" : "Je n'ai pas compris le montant (ex : 49,90 ttc, 41,58 ht ou 8,32 tva)."),
+          appliquer: (d, v) => Object.assign(d.articles[i], lirePrix(v)),
           apres: (d) => {
-            if (d.articles[i]?.auto) return "";
             const l = window.Facture.calculer(d, P).lignes[i];
             if (!l) return "";
             const unite = l.quantite !== 1 ? ` (pour ${l.quantite})` : "";
-            return `= HT ${euros(l.totalHT)} · TVA ${euros(l.totalTVA)} · TTC ${euros(l.totalTTC)}${unite}`;
+            const ligne = `= HT ${euros(l.totalHT)} · TVA ${euros(l.totalTVA)} · TTC ${euros(l.totalTTC)}${unite}`;
+            const lot = lotParId(courante.lotId);
+            return lot?.budget ? `${ligne}\n${texteBilanLot(lot)}` : ligne;
           },
         }
       );
@@ -393,35 +383,20 @@
       }
     );
 
-    if (d.budget) {
-      liste.push({
-        id: "repartition",
-        question: `Je calcule les prix pour arriver pile à ${euros(d.budget.montant)} ${d.budget.type} ?`,
-        choix: ["Oui", "Non"],
-        valeur: () => "",
-        defaut: () => "Oui",
-        valider: (v) => (/^(o|oui|n|non)$/i.test(v) ? "" : "Réponds Oui ou Non."),
-        appliquer: (d, v) => {
-          d._repartition = /^o/i.test(v) ? repartirBudget(d) : null;
-        },
-        apres: (d) => {
-          const r = d._repartition;
-          delete d._repartition;
-          if (!r) return "";
-          if (r.erreur) return `⚠ ${r.erreur}`;
-          const t = window.Facture.calculer(d, P);
-          const detail = t.lignes
-            .map((l) => `• ${l.description} : ${l.quantite} × ${euros(l.unitTTC)} TTC (${euros(l.unitHT)} HT)`)
-            .join("\n");
-          const bilan = `Total HT ${euros(t.totalHT)} · TVA ${euros(t.totalTVA)} · TTC ${euros(t.totalTTC)}`;
-          return r.ecart
-            ? `${detail}\n\n${bilan}\n⚠ Écart de ${euros(r.ecart)} : avec ces quantités on ne peut pas tomber au centime près. Mets un des produits en quantité 1 (bouton ↩) pour un total exact.`
-            : `${detail}\n\n✔ Budget respecté au centime : ${bilan}\nTu peux changer un prix avec ↩ si besoin.`;
-        },
-      });
-    }
-
     liste.push({ id: "fin", fin: true });
+  }
+
+  // Produits déjà présents dans tes autres factures (les plus récents d'abord), pour ne pas les retaper.
+  function produitsDejaFactures(d) {
+    const vus = new Map();
+    const deja = new Set((d.articles || []).map((a) => a.description).filter(Boolean));
+    for (const f of [...factures].sort((a, b) => b.maj - a.maj)) {
+      if (f.data === d) continue;
+      for (const a of f.data.articles || []) {
+        if (a.description && a.prix != null && !vus.has(a.description) && !deja.has(a.description)) vus.set(a.description, a);
+      }
+    }
+    return [...vus.values()].slice(0, 6);
   }
 
   // ---------- Clients enregistrés ----------
@@ -446,6 +421,79 @@
 
   function supprimerClient(cle) {
     store.set("facture.clients", listeClients().filter((c) => c.cle !== cle));
+  }
+
+  // ---------- Lots : plusieurs factures pour un même client ----------
+  const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+  // Totaux cumulés des factures du lot et comparaison avec le budget (simple contrôle).
+  function bilanLot(lot) {
+    const fs = facturesDuLot(lot);
+    const tot = { ht: 0, tva: 0, ttc: 0, nb: fs.length, validees: 0, completes: 0 };
+    for (const f of fs) {
+      const t = window.Facture.calculer(f.data, P);
+      tot.ht += t.totalHT;
+      tot.tva += t.totalTVA;
+      tot.ttc += t.totalTTC;
+      if (f.statut === "validee") tot.validees++;
+      if (!manquesFacture(f).length) tot.completes++;
+    }
+    tot.ht = r2(tot.ht);
+    tot.tva = r2(tot.tva);
+    tot.ttc = r2(tot.ttc);
+    if (lot.budget) {
+      tot.compare = lot.budget.type === "HT" ? tot.ht : tot.ttc;
+      tot.ecart = r2(lot.budget.montant - tot.compare); // > 0 : reste ; < 0 : dépassement
+      tot.etat = tot.ecart < 0 ? "depasse" : tot.ecart > 0 ? "sous" : "pile";
+    }
+    return tot;
+  }
+
+  function texteBilanLot(lot) {
+    const b = bilanLot(lot);
+    const base = `Lot (${b.nb} factures) : HT ${euros(b.ht)} · TVA ${euros(b.tva)} · TTC ${euros(b.ttc)}`;
+    if (!lot.budget) return base;
+    const budget = `budget max ${euros(lot.budget.montant)} ${lot.budget.type}`;
+    if (b.etat === "depasse") return `${base}\n⚠ Dépassement : ${euros(-b.ecart)} au-dessus du ${budget}.`;
+    if (b.etat === "sous") return `${base}\nℹ Sous le budget : il reste ${euros(b.ecart)} sur le ${budget}.`;
+    return `${base}\n✔ Exactement le ${budget}.`;
+  }
+
+  // nom, budget : réglages du lot ; infos : client (ou null = nouveau client à saisir dans la 1re facture)
+  function creerLot({ nombre, budget, nom }, infos) {
+    const lot = { id: nouvelId(), nom: nom || "", clientInfos: infos, clientSource: null, budget, creee: Date.now() };
+    lots.push(lot);
+    for (let i = 0; i < nombre; i++) {
+      const d = vide();
+      if (infos) Object.assign(d, JSON.parse(JSON.stringify(infos)), { clientConnu: true, sansChoixClient: true });
+      else if (i > 0) Object.assign(d, { clientConnu: true, sansChoixClient: true });
+      else d.sansChoixClient = true;
+      const f = creerFacture(d, lot.id);
+      if (!infos && i === 0) lot.clientSource = f.id;
+    }
+    sauverFactures();
+    return lot;
+  }
+
+  // Quand le client du lot est saisi dans la 1re facture, il est recopié dans les autres brouillons du lot.
+  function propagerClientDuLot() {
+    const lot = lotParId(courante.lotId);
+    if (!lot || lot.clientSource !== courante.id) return;
+    lot.clientInfos = infosClient(data);
+    for (const f of facturesDuLot(lot)) {
+      if (f.id !== courante.id && f.statut === "brouillon") Object.assign(f.data, JSON.parse(JSON.stringify(lot.clientInfos)));
+    }
+  }
+
+  // Ce qui manque pour pouvoir valider une facture
+  function manquesFacture(f) {
+    const d = f.data;
+    const m = [];
+    if (!nomComplet(d)) m.push("le client");
+    if (!d.commande?.numero) m.push("le numéro de commande");
+    const arts = d.articles || [];
+    if (!arts.length || arts.some((a) => !a.description || a.prix == null)) m.push("les produits et leurs prix");
+    return m;
   }
 
   // ---------- Affichage ----------
@@ -474,10 +522,26 @@
     cadre.style.height = `${h * echelle}px`;
   }
 
-  function rafraichir(forcer) {
-    if (forcer || feuille.getAttribute("contenteditable") !== "true") feuille.innerHTML = window.Facture.rendre(data, P);
-    store.set("facture.brouillon", data);
+  function rafraichir() {
+    feuille.innerHTML = window.Facture.rendre(data, P);
+    if (courante.statut === "brouillon") {
+      courante.data = data;
+      courante.maj = Date.now();
+      propagerClientDuLot();
+    }
+    store.set("facture.courante", courante.id);
+    sauverFactures();
+    majBoutonPDF();
     ajusterApercu();
+  }
+
+  function majBoutonPDF() {
+    $("#btn-pdf").textContent = courante.statut === "validee" ? "Télécharger le PDF" : "Valider et télécharger le PDF";
+    const lot = lotParId(courante.lotId);
+    const fs = lot ? facturesDuLot(lot) : [];
+    $("#etat-facture").textContent =
+      (courante.statut === "validee" ? `Facture ${courante.numero} (validée)` : "Brouillon") +
+      (lot ? ` · ${lot.nom || libelleClient(lot.clientInfos || data) || "Lot"} — facture ${fs.indexOf(courante) + 1}/${fs.length}` : "");
   }
 
   function valeurProposee(etape) {
@@ -486,37 +550,79 @@
     return etape.defaut ? etape.defaut(data) || "" : "";
   }
 
-  function poser() {
-    const etape = etapes(data)[pos];
-    zoneSuggestions.innerHTML = "";
-    $("#btn-retour").disabled = historique.length === 0;
+  function bloquerSaisie(texte) {
+    champ.value = "";
+    champ.disabled = true;
+    champ.placeholder = texte;
+  }
 
+  function puceSuivanteDuLot() {
+    const lot = lotParId(courante.lotId);
+    if (!lot) return;
+    const fs = facturesDuLot(lot);
+    const suivante = fs.find((f) => f.statut === "brouillon" && f.id !== courante.id && manquesFacture(f).length);
+    if (suivante) ajouterPuce(`➡ Préparer la facture ${fs.indexOf(suivante) + 1}/${fs.length} du lot`, () => ouvrirFacture(suivante.id));
+    ajouterPuce("📁 Voir le lot", () => ouvrirFactures(lot.id));
+  }
+
+  function poser() {
+    zoneSuggestions.innerHTML = "";
+    $("#btn-retour").disabled = historique.length === 0 || courante.statut === "validee";
+
+    if (courante.statut === "validee") {
+      bulle(`🔒 Facture ${courante.numero} validée : elle ne peut plus être modifiée (pour corriger, fais un avoir).`, "ia");
+      bloquerSaisie("Facture validée");
+      ajouterPuce("Télécharger le PDF", () => telechargerFacture(courante));
+      puceSuivanteDuLot();
+      ajouterPuce("Nouvelle facture", () => nouvelle());
+      return;
+    }
+
+    const etape = etapes(data)[pos];
     if (etape.fin) {
       const t = window.Facture.calculer(data, P);
-      const m = (n) => window.Facture.money(n, P.devise);
+      const lot = lotParId(courante.lotId);
       bulle(
-        `✅ Facture prête !\nTotal HT : ${m(t.totalHT)}\nTVA : ${m(t.totalTVA)}\nTotal TTC : ${m(t.totalTTC)}\n\n` +
-          "Clique sur « Télécharger le PDF ». Tu peux aussi cliquer directement dans la facture pour corriger un détail.",
+        `✅ Facture prête !\nTotal HT : ${euros(t.totalHT)}\nTVA : ${euros(t.totalTVA)}\nTotal TTC : ${euros(t.totalTTC)}` +
+          (lot ? `\n\n${texteBilanLot(lot)}` : "") +
+          "\n\nC'est encore un brouillon : tu peux le modifier. « Valider et télécharger le PDF » lui donne son numéro définitif.",
         "ia"
       );
-      champ.value = "";
-      champ.disabled = true;
-      champ.placeholder = "Facture terminée";
-      feuille.setAttribute("contenteditable", "true");
+      bloquerSaisie("Brouillon terminé");
       if (enregistrerClient(data)) bulle(`👤 Client enregistré : ${libelleClient(data)}`, "ia");
-      ajouterPuce("Nouvelle facture pour le même client", () => nouvelle(infosClient(data)));
-      ajouterPuce("Nouvelle facture", () => nouvelle());
+      ajouterPuce("✏ Modifier les produits", () => allerA("nbArticles"));
+      ajouterPuce("Valider et télécharger le PDF", () => telechargerFacture(courante));
+      if (lot) puceSuivanteDuLot();
+      else {
+        ajouterPuce("Nouvelle facture pour le même client", () => nouvelle(infosClient(data)));
+        ajouterPuce("Nouvelle facture", () => nouvelle());
+      }
       return;
     }
 
     champ.disabled = false;
     champ.placeholder = "Ta réponse… (Entrée pour valider)";
-    feuille.removeAttribute("contenteditable");
     bulle(etape.question, "ia", valeurProposee(etape));
     (etape.choix || []).forEach((c) => ajouterPuce(c, () => repondre(c)));
-    if (preRempli) ajouterPuce("✔ Valider tout ce qui est pré-rempli", toutValider);
+    if (preRempli) {
+      ajouterPuce("✔ Valider tout ce qui est pré-rempli", toutValider);
+      const ids = etapes(data).map((e) => e.id);
+      if (ids.includes("commande.numero") && etape.id !== "commande.numero") ajouterPuce("✏ Commande", () => allerA("commande.numero"));
+      if (etape.id !== "nbArticles") ajouterPuce("✏ Produits", () => allerA("nbArticles"));
+    }
     champ.value = "";
     champ.focus();
+  }
+
+  // Saute directement à une question (ex : modifier les produits d'un brouillon)
+  function allerA(id) {
+    if (courante.statut !== "brouillon") return;
+    const i = etapes(data).findIndex((e) => e.id === id);
+    if (i < 0) return;
+    historique.push({ data: JSON.parse(JSON.stringify(data)), pos });
+    pos = i;
+    preRempli = true;
+    poser();
   }
 
   function ajouterPuce(texte, action) {
@@ -580,21 +686,31 @@
     if (!prec) return;
     data = prec.data;
     pos = prec.pos;
-    feuille.removeAttribute("contenteditable");
     bulle("↩ Retour à la question précédente", "moi");
     rafraichir();
     poser();
   }
 
-  // infos : client à reprendre (facture pour le même client), sinon facture vierge
-  function nouvelle(infos) {
-    data = vide();
-    if (infos) Object.assign(data, JSON.parse(JSON.stringify(infos)), { clientConnu: true, sansChoixClient: true });
+  // Supprime le brouillon courant s'il est resté complètement vide (évite d'accumuler des brouillons vides)
+  function nettoyerCourante() {
+    if (courante && !courante.lotId && estVide(courante)) factures = factures.filter((f) => f !== courante);
+  }
+
+  function activer(f) {
+    courante = f;
+    data = f.data;
     pos = 0;
     historique = [];
-    preRempli = false;
-    feuille.removeAttribute("contenteditable");
     fil.innerHTML = "";
+  }
+
+  // infos : client à reprendre (facture pour le même client), sinon facture vierge
+  function nouvelle(infos) {
+    nettoyerCourante();
+    const d = vide();
+    if (infos) Object.assign(d, JSON.parse(JSON.stringify(infos)), { clientConnu: true, sansChoixClient: true });
+    activer(creerFacture(d));
+    preRempli = false;
     rafraichir();
     bulle(
       infos
@@ -602,6 +718,28 @@
         : "Nouvelle facture. Réponds aux questions une par une, l'aperçu se met à jour en direct.",
       "ia"
     );
+    poser();
+  }
+
+  function ouvrirFacture(id, intro) {
+    const f = factureParId(id);
+    if (!f) return;
+    if (f !== courante) nettoyerCourante();
+    activer(f);
+    preRempli = f.statut === "brouillon" && !estVide(f);
+    rafraichir();
+    const lot = lotParId(f.lotId);
+    const fs = lot ? facturesDuLot(lot) : [];
+    if (intro) bulle(intro, "ia");
+    else if (f.statut === "brouillon") {
+      bulle(
+        (lot ? `Facture ${fs.indexOf(f) + 1}/${fs.length} du lot ${lot.nom || libelleClient(lot.clientInfos || f.data)}. ` : "") +
+          (preRempli
+            ? "Je reprends ce brouillon : Entrée pour garder chaque valeur, ou « ✏ Produits » pour aller directement aux produits."
+            : "Réponds aux questions une par une."),
+        "ia"
+      );
+    }
     poser();
   }
 
@@ -616,25 +754,13 @@
     });
   }
 
-  // Télécharge directement la facture en fichier PDF (sans passer par l'imprimante).
-  async function telechargerPDF() {
-    // Mémorise le compteur de factures
-    const num = data.facture?.numero || "";
-    if (num.startsWith(P.prefixeFacture)) {
-      const v = parseInt(num.slice(P.prefixeFacture.length), 10);
-      if (!isNaN(v)) store.set("facture.compteur", Math.max(v, compteur()));
-    }
-
-    const btn = $("#btn-pdf");
-    const texte = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Création du PDF…";
-    // Copie de la facture, à taille réelle, hors de l'écran (garde les corrections faites à la main)
+  // Crée le fichier PDF d'une facture validée et le télécharge directement (sans imprimante).
+  async function genererPDF(f) {
     const zone = document.createElement("div");
     zone.style.cssText = "position:fixed;left:-10000px;top:0;";
     const page = document.createElement("div");
     page.className = "page-a4 pour-pdf";
-    page.innerHTML = feuille.innerHTML;
+    page.innerHTML = window.Facture.rendre(f.data, P);
     zone.appendChild(page);
     document.body.appendChild(zone);
     try {
@@ -642,7 +768,6 @@
       await Promise.all(
         [...page.querySelectorAll("img")].map((img) => (img.complete ? null : new Promise((ok) => (img.onload = img.onerror = ok))))
       );
-      const nomFichier = `Facture ${num}`.trim().replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
       const travail = window
         .html2pdf()
         .set({
@@ -670,14 +795,53 @@
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", (210 - largeur) / 2, 0, largeur, 297);
         }
       }
-      pdf.save(nomFichier);
-    } catch (e) {
-      bulle(`${e.message || "Erreur PDF"} — j'ouvre l'impression à la place : choisis « Enregistrer au format PDF ».`, "erreur");
-      window.print();
+      pdf.save(`Facture ${f.numero}`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf");
     } finally {
       zone.remove();
+    }
+  }
+
+  // Valide un brouillon : lui attribue le numéro suivant (unique, sans trou) et le verrouille.
+  function validerFacture(f) {
+    if (f.statut === "validee") return "";
+    const manque = manquesFacture(f);
+    if (manque.length) return `Il manque ${manque.join(", ")}.`;
+    const { n, numero } = numeroSuivant();
+    f.numero = numero;
+    f.statut = "validee";
+    f.valideeLe = Date.now();
+    f.data.facture = { ...(f.data.facture || {}), numero };
+    if (!f.data.facture.date) f.data.facture.date = aujourdhui();
+    store.set("facture.compteur", n);
+    sauverFactures();
+    enregistrerClient(f.data);
+    return "";
+  }
+
+  // Bouton « Valider et télécharger » / « Télécharger le PDF » d'une facture
+  async function telechargerFacture(f) {
+    if (f.statut === "brouillon") {
+      const manque = manquesFacture(f);
+      if (manque.length) return alert(`Impossible de valider ce brouillon : il manque ${manque.join(", ")}.`);
+      if (!confirm(`Valider cette facture ? Elle recevra le numéro ${numeroSuivant().numero} et ne pourra plus être modifiée.`)) return;
+      validerFacture(f);
+      if (f === courante) {
+        rafraichir();
+        poser();
+      }
+    }
+    const btn = $("#btn-pdf");
+    btn.disabled = true;
+    const texte = btn.textContent;
+    btn.textContent = "Création du PDF…";
+    try {
+      await genererPDF(f);
+    } catch (e) {
+      alert(`Le PDF n'a pas pu être créé : ${e.message || e}`);
+    } finally {
       btn.disabled = false;
       btn.textContent = texte;
+      majBoutonPDF();
     }
   }
 
@@ -772,8 +936,17 @@
       const { facture: extrait = {} } = await appelIA("/api/extract", { texte, fichier });
 
       if (Array.isArray(extrait.articles) && extrait.articles.length === 0) delete extrait.articles;
-      data = fusionner(vide(), extrait);
-      if (!data.articles.length) data.articles = [{}];
+      if (courante.statut === "validee") {
+        nettoyerCourante();
+        activer(creerFacture(vide()));
+      }
+      const nouvelles = fusionner(vide(), extrait);
+      const lot = lotParId(courante.lotId);
+      if (lot?.clientInfos && lot.clientSource !== courante.id)
+        Object.assign(nouvelles, JSON.parse(JSON.stringify(lot.clientInfos)), { clientConnu: true, sansChoixClient: true });
+      else if (lot) nouvelles.sansChoixClient = true;
+      if (!nouvelles.articles.length) nouvelles.articles = [{}];
+      data = courante.data = nouvelles;
       pos = 0;
       historique = [];
       preRempli = true;
@@ -814,7 +987,7 @@
 
   function remplirFormProfil(src) {
     for (const [id, chemin] of Object.entries(champsProfil)) $("#" + id).value = get(src, chemin) ?? "";
-    $("#p-prochain").value = compteur() + 1;
+    $("#p-prochain").value = numeroSuivant().n;
     logoBrouillon = src.logo || "";
     $("#apercu-logo").src = logoBrouillon;
   }
@@ -843,11 +1016,18 @@
       $("#erreur-profil").hidden = false;
       return;
     }
-    const prochain = parseInt($("#p-prochain").value, 10);
-    if (prochain >= 1) store.set("facture.compteur", prochain - 1);
     P = fusionner(profilParDefaut(), nouveau, true);
+    const prochain = parseInt($("#p-prochain").value, 10);
+    if (prochain >= 1 && prochain - 1 !== compteur()) {
+      if (prochain - 1 < compteur() && factures.some((f) => f.numero)) {
+        $("#erreur-profil").textContent = `Le prochain numéro ne peut pas revenir en arrière (déjà utilisé jusqu'à ${formatNumero(compteur())}).`;
+        $("#erreur-profil").hidden = false;
+        return;
+      }
+      store.set("facture.compteur", prochain - 1);
+    }
     $("#dlg-profil").close();
-    rafraichir(true);
+    rafraichir();
     bulle("Infos de ton entreprise enregistrées ✔", "moi");
   }
 
@@ -874,7 +1054,7 @@
 
   // ---------- Sauvegarde / restauration des réglages dans un fichier ----------
   function telechargerReglages() {
-    const contenu = { version: 2, profil: store.get("facture.profil", {}), compteur: compteur(), clients: listeClients() };
+    const contenu = { version: 3, profil: store.get("facture.profil", {}), compteur: compteur(), clients: listeClients(), factures, lots };
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([JSON.stringify(contenu, null, 2)], { type: "application/json" }));
     a.download = "reglages-factures.json";
@@ -897,9 +1077,14 @@
       if (Number.isInteger(json.compteur)) store.set("facture.compteur", json.compteur);
       if (Array.isArray(json.clients)) store.set("facture.clients", json.clients);
       P = fusionner(profilParDefaut(), json.profil, true);
+      if (Array.isArray(json.factures)) factures = json.factures;
+      if (Array.isArray(json.lots)) lots = json.lots;
+      sauverFactures();
       remplirFormProfil(P);
-      rafraichir(true);
-      $("#etat-profil").textContent = "✔ Réglages restaurés.";
+      if (!factures.includes(courante)) activer(factures[factures.length - 1] || creerFacture(vide()));
+      rafraichir();
+      poser();
+      $("#etat-profil").textContent = "✔ Réglages, clients et factures restaurés.";
     } catch (e) {
       erreur.textContent = e.message;
       erreur.hidden = false;
@@ -946,9 +1131,240 @@
           afficherClients();
         }
       };
-      li.append(infos, facturer, suppr);
+      const lot = document.createElement("button");
+      lot.type = "button";
+      lot.className = "btn btn-secondaire";
+      lot.textContent = "Plusieurs factures";
+      lot.onclick = () => {
+        $("#dlg-clients").close();
+        ouvrirCreationLot(c.cle);
+      };
+      li.append(infos, facturer, lot, suppr);
       ul.appendChild(li);
     }
+  }
+
+  // ---------- Fenêtre « Plusieurs factures pour un même client » ----------
+  function el(tag, props = {}, ...enfants) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "onclick") e.onclick = v;
+      else if (k === "class") e.className = v;
+      else e[k] = v;
+    }
+    for (const c of enfants.flat()) if (c != null) e.append(c);
+    return e;
+  }
+  const bouton = (texte, action, classe = "btn btn-secondaire") => el("button", { type: "button", class: classe, textContent: texte, onclick: action });
+
+  function ouvrirCreationLot(cleClient) {
+    const sel = $("#lot-client");
+    sel.innerHTML = "";
+    for (const c of listeClients()) sel.append(el("option", { value: c.cle, textContent: c.libelle }));
+    sel.append(el("option", { value: "__nouveau", textContent: "➕ Nouveau client (ses infos seront demandées dans la 1re facture)" }));
+    if (cleClient && listeClients().some((c) => c.cle === cleClient)) sel.value = cleClient;
+    $("#lot-nombre").value = 5;
+    $("#lot-nom").value = "";
+    $("#lot-budget").value = "";
+    $("#lot-budget-type").value = "TTC";
+    $("#erreur-lot").hidden = true;
+    $("#dlg-lot").showModal();
+  }
+
+  function creerLotDepuisFenetre() {
+    const erreur = $("#erreur-lot");
+    erreur.hidden = true;
+    const nombre = parseInt($("#lot-nombre").value, 10);
+    if (!(nombre >= 1 && nombre <= 50)) {
+      erreur.textContent = "Choisis entre 1 et 50 factures.";
+      return (erreur.hidden = false);
+    }
+    const texteBudget = $("#lot-budget").value.trim();
+    const budget = texteBudget ? lireBudget(texteBudget, $("#lot-budget-type").value) : null;
+    if (texteBudget && !budget) {
+      erreur.textContent = "Je n'ai pas compris le budget (ex : 17 000 ou 17000,50).";
+      return (erreur.hidden = false);
+    }
+    const choix = $("#lot-client").value;
+    const client = listeClients().find((c) => c.cle === choix);
+    nettoyerCourante();
+    const lot = creerLot({ nombre, budget, nom: $("#lot-nom").value.trim() }, client ? client.infos : null);
+    $("#dlg-lot").close();
+    const premiere = facturesDuLot(lot)[0];
+    ouvrirFacture(
+      premiere.id,
+      `🗂 ${nombre} factures créées${client ? ` pour ${client.libelle}` : ""}` +
+        (budget ? `, budget maximum ${euros(budget.montant)} ${budget.type} (contrôle seulement)` : "") +
+        `. On commence par la facture 1/${nombre}` +
+        (client ? " : les adresses sont déjà remplies." : " : d'abord les infos du client, elles seront reprises sur toutes les factures du lot.")
+    );
+  }
+
+  // ---------- Fenêtre « Mes factures » ----------
+  function ligneFacture(f, index) {
+    const t = window.Facture.calculer(f.data, P);
+    const manque = manquesFacture(f);
+    const statut =
+      f.statut === "validee"
+        ? el("span", { class: "statut validee", textContent: "Validée" })
+        : el("span", { class: `statut ${manque.length ? "incomplet" : ""}`, textContent: manque.length ? "Brouillon incomplet" : "Brouillon prêt" });
+    const nbProduits = (f.data.articles || []).filter((a) => a.description).length;
+    const actions = el(
+      "div",
+      { class: "actions" },
+      bouton(f.statut === "validee" ? "Voir" : "Préparer", () => {
+        $("#dlg-factures").close();
+        ouvrirFacture(f.id);
+      }),
+      bouton(f.statut === "validee" ? "PDF" : "Valider + PDF", async () => {
+        await telechargerFacture(f);
+        afficherFactures();
+      }),
+      f.statut === "brouillon"
+        ? bouton("Supprimer", () => {
+            if (!confirm("Supprimer ce brouillon ?")) return;
+            factures = factures.filter((x) => x !== f);
+            if (f === courante) activer(creerFacture(vide()));
+            sauverFactures();
+            rafraichir();
+            afficherFactures();
+          })
+        : null
+    );
+    return el(
+      "tr",
+      {},
+      el("td", { textContent: index != null ? String(index + 1) : "" }),
+      el("td", {}, statut),
+      el("td", { textContent: f.numero || "—" }),
+      el("td", { textContent: f.data.commande?.numero || "—" }),
+      el("td", { textContent: f.lotId ? "" : libelleClient(f.data) || "—" }),
+      el("td", { class: "num", textContent: String(nbProduits) }),
+      el("td", { class: "num", textContent: euros(t.totalHT) }),
+      el("td", { class: "num", textContent: euros(t.totalTVA) }),
+      el("td", { class: "num", textContent: euros(t.totalTTC) }),
+      el("td", {}, actions)
+    );
+  }
+
+  function tableFactures(fs, avecIndex, totaux) {
+    const entete = ["#", "Statut", "N° facture", "N° commande", "Client", "Produits", "HT", "TVA", "TTC", ""];
+    return el(
+      "div",
+      { class: "defile" },
+      el(
+        "table",
+        { class: "table-factures" },
+        el("thead", {}, el("tr", {}, entete.map((h, i) => el("th", { class: i >= 5 && i <= 8 ? "num" : "", textContent: h })))),
+        el("tbody", {}, fs.map((f, i) => ligneFacture(f, avecIndex ? i : null))),
+        totaux
+          ? el(
+              "tfoot",
+              {},
+              el(
+                "tr",
+                {},
+                el("td", { colSpan: 6, textContent: "Total cumulé" }),
+                el("td", { class: "num", textContent: euros(totaux.ht) }),
+                el("td", { class: "num", textContent: euros(totaux.tva) }),
+                el("td", { class: "num", textContent: euros(totaux.ttc) }),
+                el("td")
+              )
+            )
+          : null
+      )
+    );
+  }
+
+  async function validerEtTelechargerLot(lot, etat) {
+    const fs = facturesDuLot(lot);
+    const prets = fs.filter((f) => f.statut === "brouillon" && !manquesFacture(f).length);
+    const incomplets = fs.filter((f) => f.statut === "brouillon" && manquesFacture(f).length);
+    if (prets.length) {
+      const premier = numeroSuivant().n;
+      const msg =
+        `Valider ${prets.length} brouillon(s) ? Ils recevront les numéros ${formatNumero(premier)} à ${formatNumero(premier + prets.length - 1)} ` +
+        "et ne seront plus modifiables." +
+        (incomplets.length ? `\n\n${incomplets.length} brouillon(s) incomplet(s) seront laissés de côté.` : "");
+      if (!confirm(msg)) return;
+      prets.forEach(validerFacture);
+    } else if (incomplets.length && !fs.some((f) => f.statut === "validee")) {
+      return alert("Aucune facture prête : complète d'abord les brouillons (client, n° de commande, produits et prix).");
+    }
+    const validees = fs.filter((f) => f.statut === "validee");
+    for (let i = 0; i < validees.length; i++) {
+      etat.textContent = `Téléchargement ${i + 1}/${validees.length}…`;
+      await genererPDF(validees[i]);
+      await new Promise((ok) => setTimeout(ok, 400));
+    }
+    etat.textContent = `✔ ${validees.length} PDF téléchargé(s).` + (incomplets.length ? ` ${incomplets.length} brouillon(s) à terminer.` : "");
+    if (factures.includes(courante)) {
+      rafraichir();
+      poser();
+    }
+  }
+
+  function blocLot(lot) {
+    const fs = facturesDuLot(lot);
+    const b = bilanLot(lot);
+    const client = libelleClient(lot.clientInfos || fs[0]?.data || {}) || "Client à saisir";
+    const etat = el("span", { class: "etat" });
+    const bilan = el("div", { class: `bilan ${b.etat || ""}`, textContent: texteBilanLot(lot) });
+    return el(
+      "div",
+      { class: "bloc-lot", id: `lot-${lot.id}` },
+      el("h3", { textContent: `🗂 ${lot.nom || client}` }),
+      el("div", {
+        class: "sous-titre",
+        textContent:
+          `${client} · ${fs.length} factures · ${b.validees} validée(s), ${b.completes - b.validees} brouillon(s) prêt(s)` +
+          (lot.budget ? ` · budget max ${euros(lot.budget.montant)} ${lot.budget.type}` : ""),
+      }),
+      bilan,
+      tableFactures(fs, true, b),
+      el(
+        "div",
+        { class: "actions-lot" },
+        bouton("+ Ajouter une facture au lot", () => {
+          const d = vide();
+          if (lot.clientInfos) Object.assign(d, JSON.parse(JSON.stringify(lot.clientInfos)));
+          Object.assign(d, { clientConnu: true, sansChoixClient: true });
+          creerFacture(d, lot.id);
+          sauverFactures();
+          afficherFactures(lot.id);
+        }),
+        bouton("Valider et télécharger tout le lot", () => validerEtTelechargerLot(lot, etat).then(() => afficherFactures(lot.id)), "btn btn-principal"),
+        fs.some((f) => f.statut === "validee")
+          ? null
+          : bouton("Supprimer le lot", () => {
+              if (!confirm("Supprimer ce lot et tous ses brouillons ?")) return;
+              factures = factures.filter((f) => f.lotId !== lot.id);
+              lots = lots.filter((l) => l !== lot);
+              if (!factures.includes(courante)) activer(creerFacture(vide()));
+              sauverFactures();
+              rafraichir();
+              poser();
+              afficherFactures();
+            }),
+        etat
+      )
+    );
+  }
+
+  function afficherFactures(lotId) {
+    const zone = $("#liste-factures");
+    zone.innerHTML = "";
+    const lesLots = [...lots].sort((a, b) => b.creee - a.creee);
+    for (const lot of lesLots) zone.append(blocLot(lot));
+    const seules = factures.filter((f) => !f.lotId && (!estVide(f) || f === courante)).sort((a, b) => b.maj - a.maj);
+    if (seules.length) zone.append(el("div", { class: "bloc-lot" }, el("h3", { textContent: "Factures seules" }), tableFactures(seules, false)));
+    if (!lesLots.length && !seules.length) zone.append(el("p", { textContent: "Aucune facture pour l'instant." }));
+    if (lotId) document.getElementById(`lot-${lotId}`)?.scrollIntoView({ block: "start" });
+  }
+
+  function ouvrirFactures(lotId) {
+    afficherFactures(lotId);
+    if (!$("#dlg-factures").open) $("#dlg-factures").showModal();
   }
 
   // ---------- Panneau « Ajuster le logo » ----------
@@ -1019,10 +1435,18 @@
     repondre(champ.value);
   });
   $("#btn-retour").addEventListener("click", retour);
-  $("#btn-nouvelle").addEventListener("click", () => {
-    if (confirm("Commencer une nouvelle facture ? La facture en cours sera effacée.")) nouvelle();
+  $("#btn-nouvelle").addEventListener("click", () => nouvelle());
+  $("#btn-pdf").addEventListener("click", () => telechargerFacture(courante));
+  $("#btn-factures").addEventListener("click", () => ouvrirFactures(courante.lotId));
+  $("#btn-lot").addEventListener("click", () => ouvrirCreationLot(nomComplet(data) ? cleClient(data) : null));
+  $("#btn-factures-lot").addEventListener("click", () => {
+    $("#dlg-factures").close();
+    ouvrirCreationLot();
   });
-  $("#btn-pdf").addEventListener("click", telechargerPDF);
+  $("#btn-lot-ok").addEventListener("click", (e) => {
+    e.preventDefault();
+    creerLotDepuisFenetre();
+  });
 
   $("#btn-ia").addEventListener("click", () => {
     $("#erreur-ia").hidden = true;
@@ -1090,7 +1514,7 @@
       const { src, rogne } = await rognerImage(P.logo);
       if (!rogne) return (etat.textContent = "Il n'y a pas de marge vide à enlever.");
       if (!sauverProfil({ logo: src })) return (etat.textContent = "Impossible d'enregistrer dans ce navigateur.");
-      rafraichir(true);
+      rafraichir();
       etat.textContent = "✔ Marges vides enlevées : le logo prend maintenant toute la place.";
     } catch (e) {
       etat.textContent = e.message;
@@ -1102,12 +1526,14 @@
 
   // ---------- Démarrage ----------
   rafraichir();
-  if (data.client && data.client.prenom) {
-    bulle("J'ai repris ta facture en cours. Je te repose les questions depuis le début avec les valeurs déjà saisies (Entrée pour garder).", "ia");
+  if (courante.statut === "brouillon" && !estVide(courante)) {
+    bulle("Je reprends ton brouillon en cours : Entrée pour garder chaque valeur, ou « ✏ Produits » pour aller directement aux produits.", "ia");
     preRempli = true;
-  } else {
+  } else if (courante.statut === "brouillon") {
     bulle(
-      "Bonjour 👋 Je vais te poser les questions une par une pour remplir la facture. L'aperçu se met à jour en direct.\n\nPremière fois ? Clique d'abord sur « ⚙ Mon entreprise » pour mettre ton logo et tes infos.",
+      "Bonjour 👋 Je vais te poser les questions une par une pour remplir la facture. L'aperçu se met à jour en direct.\n\n" +
+        "Plusieurs factures pour un même client ? Clique sur « 🗂 Plusieurs factures ».\n" +
+        "Première fois ? Clique d'abord sur « ⚙ Mon entreprise » pour mettre ton logo et tes infos.",
       "ia"
     );
   }

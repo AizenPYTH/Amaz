@@ -152,7 +152,7 @@
           ${V.tva ? `<div>TVA ${esc(V.tva)}</div>` : ""}
           <table class="f-paye-infos">
             <tr><td>Date de la facture/Date de la livraison</td><td>${val(data.facture?.date, "08 décembre 2025")}</td></tr>
-            <tr><td>Numéro de la facture</td><td>${val(data.facture?.numero, "FR-2026-00001")}</td></tr>
+            <tr><td>Numéro de la facture</td><td>${val(data.facture?.numero, "Attribué à la validation")}</td></tr>
             <tr><td>Total à payer</td><td>${totalAPayer}</td></tr>
           </table>
         </div>

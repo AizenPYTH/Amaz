@@ -18,6 +18,8 @@
       <button id="btn-logo" class="btn btn-secondaire" type="button">🖼 Ajuster le logo</button>
       <button id="btn-clients" class="btn btn-secondaire" type="button">👥 Clients</button>
       <button id="btn-ia" class="btn btn-secondaire" type="button">✨ Coller la commande (IA)</button>
+      <button id="btn-factures" class="btn btn-secondaire" type="button">📁 Factures</button>
+      <button id="btn-lot" class="btn btn-secondaire" type="button">🗂 Plusieurs factures</button>
       <button id="btn-nouvelle" class="btn btn-secondaire" type="button">Nouvelle facture</button>
       <button id="btn-pdf" class="btn btn-principal" type="button">Télécharger le PDF</button>
     </div>
@@ -25,6 +27,7 @@
 
   <main class="app">
     <section class="chat no-print" aria-label="Assistant">
+      <div id="etat-facture" class="etat-facture"></div>
       <div id="fil" class="fil" aria-live="polite"></div>
       <form id="saisie" class="saisie" autocomplete="off">
         <div id="suggestions" class="suggestions"></div>
@@ -57,6 +60,44 @@
     </div>
     <p id="etat-logo" class="panneau-aide"></p>
   </aside>
+
+  <!-- Créer plusieurs factures pour un même client -->
+  <dialog id="dlg-lot" class="no-print">
+    <form method="dialog" class="dlg">
+      <h2>🗂 Plusieurs factures pour un même client</h2>
+      <p>Les infos du client sont reprises sur toutes les factures. Chaque facture reste indépendante : tu saisis ensuite pour chacune son numéro de commande et ses produits réels.</p>
+      <label>Client
+        <select id="lot-client"></select>
+      </label>
+      <div class="grille">
+        <label>Nombre de factures<input id="lot-nombre" type="number" min="1" max="50" value="5"></label>
+        <label>Nom du lot (facultatif)<input id="lot-nom" placeholder="ex : Équipement bureaux octobre"></label>
+        <label>Budget maximum du client (facultatif)<input id="lot-budget" inputmode="decimal" placeholder="ex : 17 000"></label>
+        <label>Budget exprimé en
+          <select id="lot-budget-type"><option>TTC</option><option>HT</option></select>
+        </label>
+      </div>
+      <p class="aide-dlg">Le budget sert uniquement de contrôle : le total cumulé des factures est comparé au budget, et tu es prévenu s'il est dépassé ou s'il reste une marge. Les prix restent ceux que tu saisis.</p>
+      <p id="erreur-lot" class="erreur" hidden></p>
+      <div class="dlg-actions">
+        <button value="annuler" class="btn btn-secondaire">Annuler</button>
+        <button id="btn-lot-ok" value="ok" class="btn btn-principal">Créer les factures</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Liste des factures (lots et factures seules) -->
+  <dialog id="dlg-factures" class="no-print">
+    <form method="dialog" class="dlg">
+      <h2>📁 Mes factures</h2>
+      <p>Les brouillons sont modifiables. Un numéro définitif (unique, à la suite) est attribué seulement quand tu valides une facture ; elle n'est plus modifiable ensuite.</p>
+      <div id="liste-factures" class="liste-factures"></div>
+      <div class="dlg-actions">
+        <button id="btn-factures-lot" type="button" class="btn btn-secondaire">🗂 Plusieurs factures pour un client</button>
+        <button value="fermer" class="btn btn-secondaire">Fermer</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Clients enregistrés -->
   <dialog id="dlg-clients" class="no-print">
