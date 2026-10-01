@@ -103,5 +103,6 @@
   #feuille { margin: 0 !important; box-shadow: none !important; transform: none !important; min-height: 0 !important; outline: none !important; }
   .facture { min-height: calc(296mm - 8mm); }
   .facture .exemple { color: inherit; font-style: normal; }
+  #feuille, #feuille * { outline: none !important; cursor: auto !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

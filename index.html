@@ -16,6 +16,7 @@
     <div class="actions">
       <button id="btn-profil" class="btn btn-secondaire" type="button">⚙ Mon entreprise</button>
       <button id="btn-logo" class="btn btn-secondaire" type="button">🖼 Ajuster le logo</button>
+      <button id="btn-clients" class="btn btn-secondaire" type="button">👥 Clients</button>
       <button id="btn-ia" class="btn btn-secondaire" type="button">✨ Coller la commande (IA)</button>
       <button id="btn-nouvelle" class="btn btn-secondaire" type="button">Nouvelle facture</button>
       <button id="btn-pdf" class="btn btn-principal" type="button">Télécharger le PDF</button>
@@ -56,6 +57,19 @@
     </div>
     <p id="etat-logo" class="panneau-aide"></p>
   </aside>
+
+  <!-- Clients enregistrés -->
+  <dialog id="dlg-clients" class="no-print">
+    <form method="dialog" class="dlg">
+      <h2>👥 Mes clients</h2>
+      <p>Chaque client est enregistré automatiquement quand sa facture est terminée. Clique sur « Nouvelle facture » pour refaire une facture sans retaper ses adresses.</p>
+      <input id="recherche-client" type="search" placeholder="Rechercher un client…">
+      <ul id="liste-clients" class="liste-clients"></ul>
+      <div class="dlg-actions">
+        <button value="fermer" class="btn btn-secondaire">Fermer</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Coller une commande : l'IA pré-remplit UNIQUEMENT la partie qui change -->
   <dialog id="dlg-ia" class="no-print">
@@ -130,7 +144,7 @@
       <p id="erreur-profil" class="erreur" hidden></p>
       <fieldset>
         <legend>Sauvegarde</legend>
-        <p>Tes réglages sont gardés dans ce navigateur. Garde aussi une copie dans un fichier, pour les remettre sur un autre appareil en 1 clic.</p>
+        <p>Tes réglages et tes clients sont gardés dans ce navigateur. Garde aussi une copie dans un fichier, pour les remettre sur un autre appareil en 1 clic.</p>
         <div class="logo-ligne">
           <button id="btn-sauver" type="button" class="btn btn-secondaire">💾 Télécharger mes réglages</button>
           <label class="fichier">📂 Restaurer un fichier de réglages<input id="fichier-reglages" type="file" accept="application/json,.json"></label>

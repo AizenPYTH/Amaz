@@ -14,7 +14,9 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
   (client, adresses, commande, articles, prix). Elle ne peut pas toucher au logo ni à ton entreprise : ces champs ne lui sont même pas demandés.
 - **🖼 Ajuster le logo** : taille et position avec des curseurs, ou en faisant glisser le logo sur la facture ;
   « Rogner les marges vides » enlève le blanc autour du logo (souvent la cause d'un logo qui paraît minuscule)
-- **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo et de tes infos dans un fichier, à restaurer en 1 clic
+- **👥 Clients** : chaque client est enregistré à la fin de sa facture. Pour le refacturer : « Nouvelle facture pour le même client »,
+  ou choisis-le au début d'une nouvelle facture ; ses adresses sont reprises et on passe directement à la commande et aux produits
+- **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo, de tes infos et de tes clients dans un fichier, à restaurer en 1 clic
 - Une fois la facture finie, tu peux cliquer dans la facture pour corriger un détail avant le PDF
 
 ## Mettre en ligne sur Vercel

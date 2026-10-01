@@ -173,14 +173,44 @@
   ];
 
   function etapes(d) {
-    const liste = [
+    const liste = [];
+    const clients = listeClients();
+    if (clients.length && !d.sansChoixClient) liste.push(etapeChoixClient(clients));
+    if (!d.clientConnu) etapesClient(d, liste);
+    etapesFacture(d, liste);
+    return liste;
+  }
+
+  // Le client choisit dans la liste des clients enregistrés, ou « Nouveau client »
+  function etapeChoixClient(clients) {
+    const trouver = (v) => {
+      const t = v.trim().toLowerCase();
+      return clients.find((c) => c.libelle.toLowerCase() === t) || clients.find((c) => c.libelle.toLowerCase().includes(t));
+    };
+    return {
+      id: "choixClient",
+      question: "Pour quel client ? Choisis un client enregistré, ou « Nouveau client ».",
+      choix: [...clients.slice(0, 8).map((c) => c.libelle), "Nouveau client"],
+      valeur: () => "",
+      defaut: () => "Nouveau client",
+      valider: (v) => (/^nouveau/i.test(v.trim()) || trouver(v) ? "" : "Je ne trouve pas ce client. Clique sur un nom ou sur « Nouveau client »."),
+      appliquer: (d, v) => {
+        const c = /^nouveau/i.test(v.trim()) ? null : trouver(v);
+        if (c) Object.assign(d, JSON.parse(JSON.stringify(c.infos)), { clientConnu: true });
+      },
+      apres: (d) => (d.clientConnu ? `👤 ${libelleClient(d)} : adresses reprises. On passe à la commande.` : ""),
+    };
+  }
+
+  function etapesClient(d, liste) {
+    liste.push(
       q("client.prenom", "Prénom du client ?"),
       q("client.nom", "Nom du client ?"),
       ...questionsAdresse("facturation", "Adresse du client"),
       q("societe.nom", "Nom de la société du client, pour l'« Adresse commerciale » ? (facultatif — « - » si c'est un particulier)", {
         optionnel: true,
-      }),
-    ];
+      })
+    );
 
     if (d.societe?.nom) {
       liste.push(
@@ -209,7 +239,9 @@
         ...questionsAdresse("livraison", "Adresse de livraison")
       );
     }
+  }
 
+  function etapesFacture(d, liste) {
     liste.push(
       q("commande.numero", "Numéro de la commande ?"),
       q("commande.date", "Date de la commande ?", { choix: ["Aujourd'hui", "Hier"], defaut: aujourdhui, transformer: lireDate }),
@@ -288,7 +320,30 @@
       },
       { id: "fin", fin: true }
     );
-    return liste;
+  }
+
+  // ---------- Clients enregistrés ----------
+  const CHAMPS_CLIENT = ["client", "facturation", "societe", "commercialeIdentique", "commerciale", "livraisonIdentique", "livraison"];
+  const listeClients = () => store.get("facture.clients", []);
+  const libelleClient = (d) => [nomComplet(d), d.societe?.nom].filter(Boolean).join(" — ");
+  const cleClient = (d) => libelleClient(d).toLowerCase();
+
+  function infosClient(d) {
+    const infos = {};
+    for (const k of CHAMPS_CLIENT) infos[k] = JSON.parse(JSON.stringify(d[k] ?? null));
+    return infos;
+  }
+
+  // Enregistre (ou met à jour) le client de la facture, en tête de liste.
+  function enregistrerClient(d) {
+    if (!nomComplet(d)) return false;
+    const autres = listeClients().filter((c) => c.cle !== cleClient(d));
+    const c = { cle: cleClient(d), libelle: libelleClient(d), infos: infosClient(d), maj: Date.now() };
+    return store.set("facture.clients", [c, ...autres].slice(0, 300));
+  }
+
+  function supprimerClient(cle) {
+    store.set("facture.clients", listeClients().filter((c) => c.cle !== cle));
   }
 
   // ---------- Affichage ----------
@@ -346,7 +401,9 @@
       champ.disabled = true;
       champ.placeholder = "Facture terminée";
       feuille.setAttribute("contenteditable", "true");
-      ajouterPuce("Nouvelle facture", nouvelle);
+      if (enregistrerClient(data)) bulle(`👤 Client enregistré : ${libelleClient(data)}`, "ia");
+      ajouterPuce("Nouvelle facture pour le même client", () => nouvelle(infosClient(data)));
+      ajouterPuce("Nouvelle facture", () => nouvelle());
       return;
     }
 
@@ -427,15 +484,22 @@
     poser();
   }
 
-  function nouvelle() {
+  // infos : client à reprendre (facture pour le même client), sinon facture vierge
+  function nouvelle(infos) {
     data = vide();
+    if (infos) Object.assign(data, JSON.parse(JSON.stringify(infos)), { clientConnu: true, sansChoixClient: true });
     pos = 0;
     historique = [];
     preRempli = false;
     feuille.removeAttribute("contenteditable");
     fil.innerHTML = "";
     rafraichir();
-    bulle("Nouvelle facture. Réponds aux questions une par une, l'aperçu se met à jour en direct.", "ia");
+    bulle(
+      infos
+        ? `Nouvelle facture pour ${libelleClient(data)} : ses adresses sont déjà remplies. On passe directement à la commande et aux produits.`
+        : "Nouvelle facture. Réponds aux questions une par une, l'aperçu se met à jour en direct.",
+      "ia"
+    );
     poser();
   }
 
@@ -645,7 +709,7 @@
 
   // ---------- Sauvegarde / restauration des réglages dans un fichier ----------
   function telechargerReglages() {
-    const contenu = { version: 1, profil: store.get("facture.profil", {}), compteur: compteur() };
+    const contenu = { version: 2, profil: store.get("facture.profil", {}), compteur: compteur(), clients: listeClients() };
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([JSON.stringify(contenu, null, 2)], { type: "application/json" }));
     a.download = "reglages-factures.json";
@@ -666,6 +730,7 @@
       if (!json || typeof json.profil !== "object") throw new Error("Ce fichier n'est pas un fichier de réglages.");
       if (!store.set("facture.profil", json.profil)) throw new Error("Impossible d'enregistrer dans ce navigateur.");
       if (Number.isInteger(json.compteur)) store.set("facture.compteur", json.compteur);
+      if (Array.isArray(json.clients)) store.set("facture.clients", json.clients);
       P = fusionner(profilParDefaut(), json.profil, true);
       remplirFormProfil(P);
       rafraichir(true);
@@ -673,6 +738,51 @@
     } catch (e) {
       erreur.textContent = e.message;
       erreur.hidden = false;
+    }
+  }
+
+  // ---------- Fenêtre « Mes clients » ----------
+  function afficherClients() {
+    const ul = $("#liste-clients");
+    const t = $("#recherche-client").value.trim().toLowerCase();
+    const clients = listeClients().filter((c) => !t || c.libelle.toLowerCase().includes(t));
+    ul.innerHTML = "";
+    if (!clients.length) {
+      const li = document.createElement("li");
+      li.className = "vide";
+      li.textContent = t ? "Aucun client trouvé." : "Aucun client pour l'instant : ils s'enregistrent tout seuls à la fin de chaque facture.";
+      return ul.appendChild(li);
+    }
+    for (const c of clients) {
+      const f = c.infos.facturation || {};
+      const li = document.createElement("li");
+      const infos = document.createElement("div");
+      infos.className = "infos";
+      const nom = document.createElement("strong");
+      nom.textContent = c.libelle;
+      const adr = document.createElement("span");
+      adr.textContent = [f.adresse, [f.cp, f.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      infos.append(nom, adr);
+      const facturer = document.createElement("button");
+      facturer.type = "button";
+      facturer.className = "btn btn-principal";
+      facturer.textContent = "Nouvelle facture";
+      facturer.onclick = () => {
+        $("#dlg-clients").close();
+        nouvelle(c.infos);
+      };
+      const suppr = document.createElement("button");
+      suppr.type = "button";
+      suppr.className = "btn btn-secondaire";
+      suppr.textContent = "Supprimer";
+      suppr.onclick = () => {
+        if (confirm(`Supprimer ${c.libelle} de tes clients ?`)) {
+          supprimerClient(c.cle);
+          afficherClients();
+        }
+      };
+      li.append(infos, facturer, suppr);
+      ul.appendChild(li);
     }
   }
 
@@ -786,6 +896,13 @@
       $("#erreur-profil").hidden = false;
     }
   });
+
+  $("#btn-clients").addEventListener("click", () => {
+    $("#recherche-client").value = "";
+    afficherClients();
+    $("#dlg-clients").showModal();
+  });
+  $("#recherche-client").addEventListener("input", afficherClients);
 
   $("#btn-sauver").addEventListener("click", telechargerReglages);
   $("#fichier-reglages").addEventListener("change", (e) => {

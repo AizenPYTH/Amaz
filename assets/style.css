@@ -122,6 +122,16 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .etat { font-size: 13px; color: var(--doux); }
 @media (max-width: 560px) { .dlg .grille { grid-template-columns: 1fr; } }
 
+.liste-clients { list-style: none; margin: 10px 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.liste-clients li {
+  display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--bord);
+}
+.liste-clients .infos { flex: 1; min-width: 0; }
+.liste-clients .infos strong { display: block; font-size: 14px; }
+.liste-clients .infos span { display: block; font-size: 12.5px; color: var(--doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liste-clients .btn { font-size: 13px; padding: 6px 10px; }
+.liste-clients .vide { color: var(--doux); font-size: 14px; border: 0; }
+
 .panneau {
   position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(340px, calc(100vw - 32px));
   background: var(--panneau); color: var(--texte); border: 1px solid var(--bord); border-radius: 12px;
