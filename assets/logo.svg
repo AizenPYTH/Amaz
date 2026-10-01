@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="64" viewBox="0 0 240 64">
+  <rect x="0" y="8" width="48" height="48" rx="10" fill="#111"/>
+  <text x="24" y="42" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#fff" text-anchor="middle">M</text>
+  <text x="60" y="30" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#111">MA SOCIÉTÉ</text>
+  <text x="60" y="50" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#666">Remplace-moi par ton logo</text>
+</svg>

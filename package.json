@@ -1,0 +1,17 @@
+{
+  "name": "generateur-factures",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Générateur de factures : un assistant pose les questions une par une et produit la facture en PDF.",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

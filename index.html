@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Générateur de factures</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/invoice.css">
+  <script src="assets/config.js"></script>
+  <script src="assets/invoice.js"></script>
+</head>
+<body>
+  <header class="barre no-print">
+    <div class="marque">🧾 Générateur de factures</div>
+    <div class="actions">
+      <button id="btn-ia" class="btn btn-secondaire" type="button">✨ Coller la commande (IA)</button>
+      <button id="btn-nouvelle" class="btn btn-secondaire" type="button">Nouvelle facture</button>
+      <button id="btn-pdf" class="btn btn-principal" type="button">Télécharger le PDF</button>
+    </div>
+  </header>
+
+  <main class="app">
+    <section class="chat no-print" aria-label="Assistant">
+      <div id="fil" class="fil" aria-live="polite"></div>
+      <form id="saisie" class="saisie" autocomplete="off">
+        <div id="suggestions" class="suggestions"></div>
+        <div class="ligne-saisie">
+          <button id="btn-retour" class="btn btn-icone" type="button" title="Revenir à la question précédente">↩</button>
+          <input id="reponse" type="text" placeholder="Ta réponse… (Entrée pour valider)" autofocus>
+          <button class="btn btn-principal" type="submit">OK</button>
+        </div>
+        <div class="aide">Entrée sur un champ vide = garder la valeur proposée · « - » = laisser vide</div>
+      </form>
+    </section>
+
+    <section class="apercu" aria-label="Aperçu de la facture">
+      <div class="apercu-cadre" id="cadre">
+        <div id="feuille" class="page-a4"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dlg-ia" class="no-print">
+    <form method="dialog" class="dlg">
+      <h2>✨ Remplir avec l'IA</h2>
+      <p>Colle ici tout ce que tu as sur la commande (mail de confirmation, adresse, articles, prix…). L'IA pré-remplit la facture, puis je te repose les questions une par une pour que tu valides.</p>
+      <textarea id="texte-ia" rows="12" placeholder="Ex : Commande n° 402-1234567-1234567 du 28/09/2026&#10;Jean Dupont, 25 avenue des Exemples, 75015 Paris&#10;1 x Casque audio Bluetooth 49,90 € TTC"></textarea>
+      <p id="erreur-ia" class="erreur" hidden></p>
+      <div class="dlg-actions">
+        <button value="annuler" class="btn btn-secondaire">Annuler</button>
+        <button id="btn-ia-go" value="ok" class="btn btn-principal">Pré-remplir</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
