@@ -86,6 +86,56 @@
 
   const euros = (n) => window.Facture.money(n, P.devise);
 
+  function lireBudget(v) {
+    const s = String(v).toLowerCase();
+    let n = s.replace(/[^0-9,.]/g, "");
+    if (n.includes(",")) n = n.replace(/\./g, "").replace(",", ".");
+    const montant = parseFloat(n);
+    if (isNaN(montant) || montant <= 0) return null;
+    const type = /\btva\b/.test(s) ? "TVA" : /\bht\b/.test(s) ? "HT" : "TTC";
+    return { montant: Math.round(montant * 100) / 100, type };
+  }
+
+  // Calcule les prix des produits pour que la facture tombe pile sur le budget.
+  // - Les produits « auto » se partagent ce qui reste après les produits à prix fixé.
+  // - S'il n'y a aucun produit « auto », tous les prix sont ajustés en gardant leurs proportions.
+  function repartirBudget(d) {
+    const t = P.tauxTVA;
+    const b = d.budget;
+    const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+    const mesure = () => {
+      const tot = window.Facture.calculer(d, P);
+      return b.type === "HT" ? tot.totalHT : b.type === "TVA" ? tot.totalTVA : tot.totalTTC;
+    };
+    const parEuroHT = b.type === "HT" ? 1 : b.type === "TVA" ? t : 1 + t;
+    const qte = (a) => Number(a.quantite) || 1;
+    const unitHT = (a) => (a.base === "HT" ? Number(a.prix) || 0 : (Number(a.prix) || 0) / (1 + t));
+
+    const auto = d.articles.filter((a) => a.auto);
+    const cibles = auto.length ? auto : d.articles;
+    const poids = cibles.map((a) => (auto.length ? 1 : unitHT(a) * qte(a)));
+    const totalPoids = poids.reduce((x, y) => x + y, 0);
+    if (!totalPoids) return { erreur: "Donne au moins un prix, ou mets un produit en « auto »." };
+
+    // Ce que coûtent déjà le reste de la facture (prix fixés + livraison)
+    cibles.forEach((a) => Object.assign(a, { prix: 0, base: "HT", tvaSaisie: undefined }));
+    const reste = b.montant - mesure();
+    if (reste <= 0) return { erreur: "Les prix fixés et la livraison dépassent déjà le budget." };
+
+    // Répartition, puis ajustement au centime sur les produits en plus petite quantité
+    cibles.forEach((a, i) => (a.prix = r2((reste / parEuroHT) * (poids[i] / totalPoids) / qte(a))));
+    const ordre = [...cibles].sort((x, y) => qte(x) - qte(y));
+    for (let essai = 0; essai < 200; essai++) {
+      const ecart = r2(b.montant - mesure());
+      if (Math.abs(ecart) < 0.005) return { ecart: 0 };
+      const a = ordre[essai % ordre.length];
+      let pas = r2(ecart / parEuroHT / qte(a));
+      if (pas === 0) pas = ecart > 0 ? 0.01 : -0.01;
+      if (a.prix + pas > 0) a.prix = r2(a.prix + pas);
+    }
+    return { ecart: r2(b.montant - mesure()) };
+  }
+
   function villeDepuisCP(cp) {
     if (/^750\d\d$/.test(cp)) return "Paris";
     if (/^6900\d$/.test(cp)) return "Lyon";
@@ -138,6 +188,7 @@
     facture: { referencePaiement: referenceAleatoire() },
     articles: [{}],
     fraisLivraison: null,
+    budget: null, // { montant, type: "TTC" | "HT" | "TVA" } — budget donné par le client
   });
 
   let data = store.get("facture.brouillon", null) || vide();
@@ -270,6 +321,24 @@
       apres: (d) => (d.articles.length > 1 ? `OK, je prépare ${d.articles.length} lignes. On les remplit une par une.` : ""),
     });
 
+    liste.push({
+      id: "budget",
+      question:
+        "Le client t'a donné un budget à respecter ? Tape-le suivi de « ttc », « ht » ou « tva » " +
+        "(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). « - » si tu mets les prix toi-même.",
+      optionnel: true,
+      valeur: (d) => (d.budget ? `${String(d.budget.montant).replace(".", ",")} ${d.budget.type.toLowerCase()}` : ""),
+      valider: (v) => (lireBudget(v) ? "" : "Je n'ai pas compris le budget (ex : 3468,67 ttc)."),
+      appliquer: (d, v) => {
+        d.budget = v ? lireBudget(v) : null;
+        if (!d.budget) d.articles.forEach((a) => delete a.auto);
+      },
+      apres: (d) =>
+        d.budget
+          ? `Budget : ${euros(d.budget.montant)} ${d.budget.type}. Pour chaque produit, donne son prix si tu veux le fixer, ou « auto » : je calculerai les prix « auto » pour tomber pile sur le budget.`
+          : "",
+    });
+
     const articles = d.articles && d.articles.length ? d.articles : [{}];
     articles.forEach((_, i) => {
       const n = articles.length > 1 ? ` ${i + 1}/${articles.length}` : "";
@@ -283,18 +352,31 @@
         }),
         {
           id: `articles.${i}.prix`,
-          question:
-            `Produit${n} : prix unitaire ? Tape le montant suivi de « ttc », « ht » ou « tva » ` +
-            `(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). Sans précision = ${P.prixSaisisEn}.`,
+          question: d.budget
+            ? `Produit${n} : prix unitaire ? « auto » = calculé avec le budget, ou tape un prix pour le fixer (ex : 49,90 ttc).`
+            : `Produit${n} : prix unitaire ? Tape le montant suivi de « ttc », « ht » ou « tva » ` +
+              `(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). Sans précision = ${P.prixSaisisEn}.`,
+          choix: d.budget ? ["auto"] : undefined,
+          defaut: (d) => (d.budget ? "auto" : ""),
           valeur: (d) => {
             const a = d.articles?.[i];
+            if (a?.auto) return "auto";
             if (!a || a.prix == null) return "";
             const virgule = (x) => String(x).replace(".", ",");
             return a.tvaSaisie != null ? `${virgule(a.tvaSaisie)} tva` : `${virgule(a.prix)} ${(a.base || P.prixSaisisEn).toLowerCase()}`;
           },
-          valider: (v) => (lirePrix(v) ? "" : "Je n'ai pas compris le montant (ex : 49,90 ttc, 41,58 ht ou 8,32 tva)."),
-          appliquer: (d, v) => Object.assign(d.articles[i], lirePrix(v)),
+          valider: (v) =>
+            (d.budget && /^auto$/i.test(v.trim())) || lirePrix(v) ? "" : "Je n'ai pas compris le montant (ex : 49,90 ttc, 41,58 ht ou 8,32 tva).",
+          appliquer: (d, v) => {
+            const a = d.articles[i];
+            if (d.budget && /^auto$/i.test(v.trim())) {
+              a.auto = true;
+              delete a.prix;
+              delete a.tvaSaisie;
+            } else Object.assign(a, lirePrix(v), { auto: false });
+          },
           apres: (d) => {
+            if (d.articles[i]?.auto) return "";
             const l = window.Facture.calculer(d, P).lignes[i];
             if (!l) return "";
             const unite = l.quantite !== 1 ? ` (pour ${l.quantite})` : "";
@@ -317,9 +399,38 @@
           const p = lirePrix(v);
           d.fraisLivraison = p.base === "HT" ? Math.round(p.prix * (1 + P.tauxTVA) * 100) / 100 : p.prix;
         },
-      },
-      { id: "fin", fin: true }
+      }
     );
+
+    if (d.budget) {
+      liste.push({
+        id: "repartition",
+        question: `Je calcule les prix pour arriver pile à ${euros(d.budget.montant)} ${d.budget.type} ?`,
+        choix: ["Oui", "Non"],
+        valeur: () => "",
+        defaut: () => "Oui",
+        valider: (v) => (/^(o|oui|n|non)$/i.test(v) ? "" : "Réponds Oui ou Non."),
+        appliquer: (d, v) => {
+          d._repartition = /^o/i.test(v) ? repartirBudget(d) : null;
+        },
+        apres: (d) => {
+          const r = d._repartition;
+          delete d._repartition;
+          if (!r) return "";
+          if (r.erreur) return `⚠ ${r.erreur}`;
+          const t = window.Facture.calculer(d, P);
+          const detail = t.lignes
+            .map((l) => `• ${l.description} : ${l.quantite} × ${euros(l.unitTTC)} TTC (${euros(l.unitHT)} HT)`)
+            .join("\n");
+          const bilan = `Total HT ${euros(t.totalHT)} · TVA ${euros(t.totalTVA)} · TTC ${euros(t.totalTTC)}`;
+          return r.ecart
+            ? `${detail}\n\n${bilan}\n⚠ Écart de ${euros(r.ecart)} : avec ces quantités on ne peut pas tomber au centime près. Mets un des produits en quantité 1 (bouton ↩) pour un total exact.`
+            : `${detail}\n\n✔ Budget respecté au centime : ${bilan}\nTu peux changer un prix avec ↩ si besoin.`;
+        },
+      });
+    }
+
+    liste.push({ id: "fin", fin: true });
   }
 
   // ---------- Clients enregistrés ----------

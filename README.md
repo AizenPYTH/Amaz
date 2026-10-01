@@ -5,6 +5,8 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
 
 - Calcul automatique du **HT**, de la **TVA 20 %** et du **TTC** : tu tapes le montant que tu as (`49,90 ttc`, `41,58 ht` ou `8,32 tva`), le reste est calculé
 - « Combien de produits ? » : les lignes sont préparées sur la facture, puis remplies une par une
+- **Budget du client** : tu donnes le budget (`3468,67 ttc`, `2890,56 ht` ou `578,11 tva`), tu entres tes produits ;
+  pour chaque prix tu mets un montant fixe ou « auto », et les prix « auto » sont calculés pour tomber pile sur le budget
 - Numéro de facture automatique (`FR-2026-00001`, `00002`…)
 - Code postal `750xx` → ville « Paris » proposée automatiquement (pareil pour Lyon et Marseille)
 - Bouton **↩** pour revenir à la question précédente
