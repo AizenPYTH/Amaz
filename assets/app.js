@@ -71,14 +71,20 @@
     return v.trim();
   }
 
+  // Lit un montant : « 49,90 » (TTC par défaut), « 41,58 ht », « 49,90 ttc »,
+  // ou « 8,32 tva » (montant de TVA → on en déduit le HT et le TTC).
   function lirePrix(v) {
     const s = String(v).toLowerCase();
-    const base = /\bht\b/.test(s) ? "HT" : /\bttc\b/.test(s) ? "TTC" : P.prixSaisisEn;
     let n = s.replace(/[^0-9,.\-]/g, "");
     if (n.includes(",")) n = n.replace(/\./g, "").replace(",", ".");
-    const prix = parseFloat(n);
-    return isNaN(prix) || prix < 0 ? null : { prix, base };
+    const montant = parseFloat(n);
+    if (isNaN(montant) || montant < 0) return null;
+    if (/\btva\b/.test(s)) return { prix: Math.round((montant / P.tauxTVA) * 100) / 100, base: "HT", tvaSaisie: montant };
+    const base = /\bht\b/.test(s) ? "HT" : /\bttc\b/.test(s) ? "TTC" : P.prixSaisisEn;
+    return { prix: montant, base, tvaSaisie: undefined };
   }
+
+  const euros = (n) => window.Facture.money(n, P.devise);
 
   function villeDepuisCP(cp) {
     if (/^750\d\d$/.test(cp)) return "Paris";
@@ -217,38 +223,50 @@
       })
     );
 
+    liste.push({
+      id: "nbArticles",
+      question: "Combien de produits différents sur cette facture ?",
+      choix: ["1", "2", "3", "4", "5"],
+      valeur: (d) => (d.articles?.some((a) => a.description) ? String(d.articles.length) : ""),
+      defaut: () => "1",
+      valider: (v) => (/^\d+$/.test(v.trim()) && +v >= 1 && +v <= 50 ? "" : "Mets un nombre entre 1 et 50."),
+      appliquer: (d, v) => {
+        const n = parseInt(v, 10);
+        while (d.articles.length < n) d.articles.push({});
+        d.articles.length = n;
+      },
+      apres: (d) => (d.articles.length > 1 ? `OK, je prépare ${d.articles.length} lignes. On les remplit une par une.` : ""),
+    });
+
     const articles = d.articles && d.articles.length ? d.articles : [{}];
     articles.forEach((_, i) => {
-      const n = articles.length > 1 || i > 0 ? ` n°${i + 1}` : "";
+      const n = articles.length > 1 ? ` ${i + 1}/${articles.length}` : "";
       liste.push(
-        q(`articles.${i}.description`, `Article${n} : description du produit ?`),
-        q(`articles.${i}.reference`, `Article${n} : référence (${P.libelleReference}) ? (facultatif)`, { optionnel: true }),
-        q(`articles.${i}.quantite`, `Article${n} : quantité ?`, {
+        q(`articles.${i}.description`, `Produit${n} : nom / description ?`),
+        q(`articles.${i}.reference`, `Produit${n} : référence (${P.libelleReference}) ? (facultatif)`, { optionnel: true }),
+        q(`articles.${i}.quantite`, `Produit${n} : quantité ?`, {
           defaut: () => "1",
           valider: (v) => (/^\d+([.,]\d+)?$/.test(String(v).trim()) && parseFloat(String(v).replace(",", ".")) > 0 ? "" : "Mets un nombre (ex : 1)."),
           transformer: (v) => parseFloat(String(v).replace(",", ".")),
         }),
         {
           id: `articles.${i}.prix`,
-          question: `Article${n} : prix unitaire (${P.prixSaisisEn}) ? — tape « ht » ou « ttc » après le prix pour préciser`,
+          question:
+            `Produit${n} : prix unitaire ? Tape le montant suivi de « ttc », « ht » ou « tva » ` +
+            `(ex : 3468,67 ttc · 2890,56 ht · 578,11 tva). Sans précision = ${P.prixSaisisEn}.`,
           valeur: (d) => {
             const a = d.articles?.[i];
-            return a && a.prix != null ? `${String(a.prix).replace(".", ",")} ${a.base || P.prixSaisisEn}` : "";
+            if (!a || a.prix == null) return "";
+            const virgule = (x) => String(x).replace(".", ",");
+            return a.tvaSaisie != null ? `${virgule(a.tvaSaisie)} tva` : `${virgule(a.prix)} ${(a.base || P.prixSaisisEn).toLowerCase()}`;
           },
-          valider: (v) => (lirePrix(v) ? "" : "Je n'ai pas compris le prix (ex : 49,90 ou 41,58 ht)."),
+          valider: (v) => (lirePrix(v) ? "" : "Je n'ai pas compris le montant (ex : 49,90 ttc, 41,58 ht ou 8,32 tva)."),
           appliquer: (d, v) => Object.assign(d.articles[i], lirePrix(v)),
-        },
-        {
-          id: `articles.${i}.autre`,
-          question: "Ajouter un autre article ?",
-          choix: ["Oui", "Non"],
-          valeur: () => "",
-          defaut: (d) => (i < d.articles.length - 1 ? "Oui" : "Non"),
-          valider: (v) => (/^(o|oui|n|non)$/i.test(v) ? "" : "Réponds Oui ou Non."),
-          appliquer: (d, v) => {
-            if (/^o/i.test(v)) {
-              if (i === d.articles.length - 1) d.articles.push({});
-            } else d.articles.length = i + 1;
+          apres: (d) => {
+            const l = window.Facture.calculer(d, P).lignes[i];
+            if (!l) return "";
+            const unite = l.quantite !== 1 ? ` (pour ${l.quantite})` : "";
+            return `= HT ${euros(l.totalHT)} · TVA ${euros(l.totalTVA)} · TTC ${euros(l.totalTTC)}${unite}`;
           },
         }
       );
@@ -262,7 +280,11 @@
         valeur: (d) => (d.fraisLivraison == null ? "" : String(d.fraisLivraison).replace(".", ",")),
         defaut: () => "0",
         valider: (v) => (/^gratuit$/i.test(v.trim()) || lirePrix(v) ? "" : "Mets un montant (ex : 4,99) ou 0."),
-        appliquer: (d, v) => (d.fraisLivraison = /^gratuit$/i.test(v.trim()) ? 0 : lirePrix(v).prix),
+        appliquer: (d, v) => {
+          if (/^gratuit$/i.test(v.trim())) return (d.fraisLivraison = 0);
+          const p = lirePrix(v);
+          d.fraisLivraison = p.base === "HT" ? Math.round(p.prix * (1 + P.tauxTVA) * 100) / 100 : p.prix;
+        },
       },
       { id: "fin", fin: true }
     );
@@ -373,6 +395,8 @@
     const err = appliquerReponse(etape, brut);
     if (err) return bulle(err, "erreur");
     bulle(affiche === "-" ? "(vide)" : affiche, "moi");
+    const info = etape.apres && etape.apres(data);
+    if (info) bulle(info, "ia");
     rafraichir();
     poser();
   }

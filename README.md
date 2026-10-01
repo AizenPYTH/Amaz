@@ -3,7 +3,8 @@
 Un site qui te pose les questions **une par une** (client, adresses, commande, articles, prix…), affiche la facture en direct et la sort en **PDF**.
 Le modèle, le logo et la police ne bougent pas : seules les infos saisies changent.
 
-- Calcul automatique du **HT**, de la **TVA 20 %** et du **TTC** (tu tapes un prix TTC, ou `41,58 ht` pour un prix HT)
+- Calcul automatique du **HT**, de la **TVA 20 %** et du **TTC** : tu tapes le montant que tu as (`49,90 ttc`, `41,58 ht` ou `8,32 tva`), le reste est calculé
+- « Combien de produits ? » : les lignes sont préparées sur la facture, puis remplies une par une
 - Numéro de facture automatique (`FR-2026-00001`, `00002`…)
 - Code postal `750xx` → ville « Paris » proposée automatiquement (pareil pour Lyon et Marseille)
 - Bouton **↩** pour revenir à la question précédente

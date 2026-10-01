@@ -23,32 +23,33 @@
   // HT / TVA / TTC ligne par ligne, puis totaux.
   function calculer(data, P) {
     const t = P.tauxTVA;
-    const articles = (data.articles || [])
-      .filter((a) => a.description)
-      .map((a) => {
-        const q = Number(a.quantite) || 0;
-        const p = Number(a.prix) || 0;
-        let unitHT, unitTTC, totalHT, totalTTC;
-        if (a.base === "HT") {
-          unitHT = p;
-          unitTTC = round2(p * (1 + t));
-          totalHT = round2(q * p);
-          totalTTC = round2(totalHT * (1 + t));
-        } else {
-          unitTTC = p;
-          unitHT = round2(p / (1 + t));
-          totalTTC = round2(q * p);
-          totalHT = round2(totalTTC / (1 + t));
-        }
-        return { ...a, quantite: q, unitHT, unitTTC, totalHT, totalTTC };
-      });
+    // Une ligne par produit (y compris ceux pas encore remplis, pour préparer les cases)
+    const lignes = (data.articles || []).map((a, index) => {
+      const q = Number(a.quantite) || 1;
+      const p = Number(a.prix) || 0;
+      let unitHT, unitTTC, totalHT, totalTTC;
+      if (a.base === "HT") {
+        unitHT = p;
+        unitTTC = round2(p * (1 + t));
+        totalHT = round2(q * p);
+        totalTTC = round2(totalHT * (1 + t));
+      } else {
+        unitTTC = p;
+        unitHT = round2(p / (1 + t));
+        totalTTC = round2(q * p);
+        totalHT = round2(totalTTC / (1 + t));
+      }
+      const rempli = !!a.description && a.prix != null;
+      return { ...a, index, rempli, quantite: q, unitHT, unitTTC, totalHT, totalTTC, totalTVA: round2(totalTTC - totalHT) };
+    });
+    const articles = lignes.filter((l) => l.rempli);
 
     const portTTC = round2(Number(data.fraisLivraison) || 0);
     const portHT = round2(portTTC / (1 + t));
 
     const totalHT = round2(articles.reduce((s, l) => s + l.totalHT, 0) + portHT);
     const totalTTC = round2(articles.reduce((s, l) => s + l.totalTTC, 0) + portTTC);
-    return { articles, portHT, portTTC, totalHT, totalTVA: round2(totalTTC - totalHT), totalTTC };
+    return { lignes, articles, portHT, portTTC, totalHT, totalTVA: round2(totalTTC - totalHT), totalTTC };
   }
 
   // Valeur saisie, ou exemple grisé tant que le champ est vide.
@@ -101,24 +102,29 @@
 
     const totalAPayer = vide ? `<span class="exemple">${m(49.9)}</span>` : m(tot.totalTTC);
 
-    const lignesArticles = vide
-      ? `<tr class="f-art exemple">
+    const exempleArticle = `<tr class="f-art exemple">
            <td class="desc">Exemple d'article<div class="f-ref">${esc(P.libelleReference)} : ABC123</div></td>
            <td class="c">1</td><td class="num">${m(41.58)}</td><td class="c">${pct(P.tauxTVA)}</td>
-           <td class="num">${m(49.9)}</td><td class="num">${m(49.9)}</td></tr>`
-      : tot.articles
-          .map(
-            (a) => `<tr class="f-art">
+           <td class="num">${m(49.9)}</td><td class="num">${m(49.9)}</td></tr>`;
+
+    // Case préparée mais pas encore remplie
+    const caseVide = (l) => `<tr class="f-art exemple">
+           <td class="desc">${l.description ? esc(l.description) : `Produit ${l.index + 1}`}</td>
+           <td class="c">${l.quantite}</td><td class="num">…</td><td class="c">${pct(P.tauxTVA)}</td>
+           <td class="num">…</td><td class="num">…</td></tr>`;
+
+    const ligneArticle = (a) => `<tr class="f-art">
            <td class="desc">${esc(a.description)}${
-              a.reference ? `<div class="f-ref">${esc(P.libelleReference)} : <b>${esc(a.reference)}</b></div>` : ""
-            }</td>
+             a.reference ? `<div class="f-ref">${esc(P.libelleReference)} : <b>${esc(a.reference)}</b></div>` : ""
+           }</td>
            <td class="c">${a.quantite}</td>
            <td class="num">${m(a.unitHT)}</td>
            <td class="c">${pct(P.tauxTVA)}</td>
            <td class="num">${m(a.unitTTC)}</td>
-           <td class="num">${m(a.totalTTC)}</td></tr>`
-          )
-          .join("");
+           <td class="num">${m(a.totalTTC)}</td></tr>`;
+
+    const lignesArticles =
+      tot.lignes.length <= 1 && !tot.lignes[0]?.description ? exempleArticle : tot.lignes.map((l) => (l.rempli ? ligneArticle(l) : caseVide(l))).join("");
 
     const piedDePage = String(P.piedDePage || "")
       .split("\n")
