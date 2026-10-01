@@ -6,8 +6,9 @@
 //   - data   : la partie qui CHANGE à chaque facture → les questions
 // ============================================================
 
-(function () {
+(async function () {
   const $ = (s) => document.querySelector(s);
+  const Synchro = window.Synchro;
   const fil = $("#fil");
   const champ = $("#reponse");
   const feuille = $("#feuille");
@@ -27,6 +28,7 @@
     set(k, v) {
       try {
         localStorage.setItem(k, JSON.stringify(v));
+        if (Synchro.CLES.includes(k)) Synchro.planifierEnvoi();
         return true;
       } catch {
         return false;
@@ -38,6 +40,9 @@
       } catch {}
     },
   };
+
+  // ---------- Synchronisation : récupère la dernière version en ligne avant de démarrer ----------
+  if (Synchro.actif()) await Synchro.tirer();
 
   // ---------- Profil (partie fixe) ----------
   const C = window.FACTURE_CONFIG;
@@ -168,6 +173,11 @@
     const f = { id: nouvelId(), statut: "brouillon", numero: null, lotId, creee: Date.now(), maj: Date.now(), data: d };
     factures.push(f);
     return f;
+  }
+
+  // Garde la trace des brouillons/lots supprimés, pour qu'ils ne reviennent pas depuis un autre ordinateur
+  function noterSuppression(ids) {
+    store.set("facture.supprimees", [...store.get("facture.supprimees", []), ...ids].slice(-2000));
   }
 
   const estVide = (f) =>
@@ -480,6 +490,7 @@
     const lot = lotParId(courante.lotId);
     if (!lot || lot.clientSource !== courante.id) return;
     lot.clientInfos = infosClient(data);
+    lot.maj = Date.now();
     for (const f of facturesDuLot(lot)) {
       if (f.id !== courante.id && f.statut === "brouillon") Object.assign(f.data, JSON.parse(JSON.stringify(lot.clientInfos)));
     }
@@ -693,7 +704,10 @@
 
   // Supprime le brouillon courant s'il est resté complètement vide (évite d'accumuler des brouillons vides)
   function nettoyerCourante() {
-    if (courante && !courante.lotId && estVide(courante)) factures = factures.filter((f) => f !== courante);
+    if (courante && !courante.lotId && estVide(courante)) {
+      factures = factures.filter((f) => f !== courante);
+      noterSuppression([courante.id]);
+    }
   }
 
   function activer(f) {
@@ -818,14 +832,74 @@
     return "";
   }
 
+  // Valide des brouillons en garantissant des numéros uniques, même avec plusieurs ordinateurs :
+  // 1. récupère la dernière version en ligne ; 2. attribue les numéros ; 3. enregistre en ligne.
+  // Si un autre ordinateur a validé entre-temps, on annule, on fusionne et on recommence avec les numéros suivants.
+  async function validerEnLigne(ids) {
+    for (let essai = 0; essai < 4; essai++) {
+      if (Synchro.actif()) {
+        await Synchro.tirer();
+        if (Synchro.etat().etat !== "ok") {
+          alert("Connexion nécessaire pour valider (pour garantir un numéro unique entre tes ordinateurs). Réessaie quand tu es en ligne.");
+          return false;
+        }
+        rechargerDepuisStockage();
+      }
+      const aValider = ids.map(factureParId).filter((f) => f && f.statut === "brouillon" && !manquesFacture(f).length);
+      if (!aValider.length) return true;
+      const avant = { factures: JSON.parse(JSON.stringify(factures)), compteur: compteur() };
+      aValider.forEach(validerFacture);
+      if (!Synchro.actif()) return true;
+      const r = await Synchro.envoyerMaintenant({ fusion: false });
+      if (r.resultat === "ok") return true;
+      // Annule la validation locale avant de fusionner avec la version en ligne
+      factures = avant.factures;
+      store.set("facture.compteur", avant.compteur);
+      sauverFactures();
+      if (r.resultat === "erreur") {
+        rechargerDepuisStockage();
+        alert("La validation n'a pas pu être enregistrée en ligne. Vérifie ta connexion puis réessaie.");
+        return false;
+      }
+      Synchro.integrerServeur(r.serveur);
+    }
+    alert("Trop de validations en même temps sur plusieurs ordinateurs. Réessaie dans un instant.");
+    return false;
+  }
+
+  // Relit les données (après une fusion avec un autre ordinateur) sans perdre la question en cours.
+  function rechargerDepuisStockage() {
+    factures = store.get("facture.factures", []);
+    lots = store.get("facture.lots", []);
+    P = fusionner(profilParDefaut(), store.get("facture.profil", {}), true);
+    const ancienStatut = courante.statut;
+    const meme = factureParId(courante.id);
+    courante = meme || factures.filter((f) => f.statut === "brouillon").at(-1) || creerFacture(vide());
+    data = courante.data;
+    feuille.innerHTML = window.Facture.rendre(data, P);
+    majBoutonPDF();
+    ajusterApercu();
+    if (!meme || courante.statut !== ancienStatut) {
+      pos = 0;
+      historique = [];
+      fil.innerHTML = "";
+      poser();
+    }
+  }
+
   // Bouton « Valider et télécharger » / « Télécharger le PDF » d'une facture
   async function telechargerFacture(f) {
     if (f.statut === "brouillon") {
       const manque = manquesFacture(f);
       if (manque.length) return alert(`Impossible de valider ce brouillon : il manque ${manque.join(", ")}.`);
-      if (!confirm(`Valider cette facture ? Elle recevra le numéro ${numeroSuivant().numero} et ne pourra plus être modifiée.`)) return;
-      validerFacture(f);
-      if (f === courante) {
+      if (!confirm("Valider cette facture ? Elle recevra le prochain numéro et ne pourra plus être modifiée.")) return;
+      const id = f.id;
+      if (!(await validerEnLigne([id]))) return;
+      f = factureParId(id);
+      if (!f || f.statut !== "validee") return;
+      if (f.id === courante.id) {
+        courante = f;
+        data = f.data;
         rafraichir();
         poser();
       }
@@ -1002,14 +1076,14 @@
 
   // Enregistre seulement les réglages donnés, sans toucher au reste du profil.
   function sauverProfil(modifs) {
-    const nouveau = Object.assign(store.get("facture.profil", {}), modifs);
+    const nouveau = Object.assign(store.get("facture.profil", {}), modifs, { maj: Date.now() });
     const ok = store.set("facture.profil", nouveau);
     P = fusionner(profilParDefaut(), nouveau, true);
     return ok;
   }
 
   function enregistrerProfil() {
-    const nouveau = { ...store.get("facture.profil", {}), logo: logoBrouillon };
+    const nouveau = { ...store.get("facture.profil", {}), logo: logoBrouillon, maj: Date.now() };
     for (const [id, chemin] of Object.entries(champsProfil)) set(nouveau, chemin, $("#" + id).value.trim());
     if (!store.set("facture.profil", nouveau)) {
       $("#erreur-profil").textContent = "Impossible d'enregistrer (logo trop lourd ou stockage bloqué par le navigateur).";
@@ -1224,6 +1298,7 @@
         ? bouton("Supprimer", () => {
             if (!confirm("Supprimer ce brouillon ?")) return;
             factures = factures.filter((x) => x !== f);
+            noterSuppression([f.id]);
             if (f === courante) activer(creerFacture(vide()));
             sauverFactures();
             rafraichir();
@@ -1281,17 +1356,16 @@
     const prets = fs.filter((f) => f.statut === "brouillon" && !manquesFacture(f).length);
     const incomplets = fs.filter((f) => f.statut === "brouillon" && manquesFacture(f).length);
     if (prets.length) {
-      const premier = numeroSuivant().n;
       const msg =
-        `Valider ${prets.length} brouillon(s) ? Ils recevront les numéros ${formatNumero(premier)} à ${formatNumero(premier + prets.length - 1)} ` +
-        "et ne seront plus modifiables." +
+        `Valider ${prets.length} brouillon(s) ? Ils recevront les prochains numéros, à la suite, et ne seront plus modifiables.` +
         (incomplets.length ? `\n\n${incomplets.length} brouillon(s) incomplet(s) seront laissés de côté.` : "");
       if (!confirm(msg)) return;
-      prets.forEach(validerFacture);
+      if (!(await validerEnLigne(prets.map((f) => f.id)))) return;
+      lot = lotParId(lot.id) || lot;
     } else if (incomplets.length && !fs.some((f) => f.statut === "validee")) {
       return alert("Aucune facture prête : complète d'abord les brouillons (client, n° de commande, produits et prix).");
     }
-    const validees = fs.filter((f) => f.statut === "validee");
+    const validees = facturesDuLot(lot).filter((f) => f.statut === "validee");
     for (let i = 0; i < validees.length; i++) {
       etat.textContent = `Téléchargement ${i + 1}/${validees.length}…`;
       await genererPDF(validees[i]);
@@ -1338,6 +1412,7 @@
           ? null
           : bouton("Supprimer le lot", () => {
               if (!confirm("Supprimer ce lot et tous ses brouillons ?")) return;
+              noterSuppression([lot.id, ...facturesDuLot(lot).map((f) => f.id)]);
               factures = factures.filter((f) => f.lotId !== lot.id);
               lots = lots.filter((l) => l !== lot);
               if (!factures.includes(courante)) activer(creerFacture(vide()));
@@ -1365,6 +1440,63 @@
   function ouvrirFactures(lotId) {
     afficherFactures(lotId);
     if (!$("#dlg-factures").open) $("#dlg-factures").showModal();
+  }
+
+  // ---------- Synchronisation : fenêtre et indicateur ----------
+  const LIBELLES_SYNCHRO = {
+    inactif: "☁ Synchroniser",
+    ok: "☁ Synchronisé",
+    envoi: "☁ Envoi…",
+    "hors-ligne": "☁ Hors ligne",
+    erreur: "☁ Erreur",
+    "non-configure": "☁ Synchroniser",
+  };
+  function majIndicateurSynchro() {
+    const { etat, message } = Synchro.etat();
+    const b = $("#btn-synchro");
+    b.textContent = Synchro.actif() ? LIBELLES_SYNCHRO[etat] || "☁" : "☁ Synchroniser";
+    b.title = message || "Retrouver tes données sur tous tes ordinateurs";
+    $("#etat-synchro").textContent = Synchro.actif()
+      ? `Cet ordinateur est connecté. ${message || ""}`
+      : "Cet ordinateur n'est pas connecté : tes données restent seulement dans ce navigateur.";
+    $("#bloc-code").hidden = Synchro.actif();
+    $("#btn-synchro-deco").hidden = !Synchro.actif();
+    $("#btn-synchro-ok").hidden = Synchro.actif();
+  }
+  Synchro.surChangement(majIndicateurSynchro);
+  window.addEventListener("synchro:fusion", () => rechargerDepuisStockage());
+
+  async function connecterSynchro() {
+    const valeur = $("#code-acces").value.trim();
+    const erreur = $("#erreur-synchro");
+    erreur.hidden = true;
+    if (!valeur) return;
+    const btn = $("#btn-synchro-ok");
+    btn.disabled = true;
+    try {
+      const r = await Synchro.connecter(valeur);
+      if (!r.ok) {
+        erreur.textContent = r.message || Synchro.etat().message;
+        erreur.hidden = false;
+        return;
+      }
+      if (r.recharge) {
+        alert(
+          "Connecté ✔ Je charge tes données enregistrées en ligne (fusionnées avec celles de cet ordinateur, rien n'est perdu)." +
+            (r.doublons?.length
+              ? `\n\n⚠ Attention : ${r.doublons.length} facture(s) validée(s) sur cet ordinateur avant la synchronisation ont le même numéro ` +
+                `qu'une facture déjà en ligne : ${r.doublons.join(", ")}. Les deux sont conservées ; les prochains numéros seront bien uniques. ` +
+                "Vérifie ces factures avec ton comptable (un avoir + une nouvelle facture si besoin)."
+              : "")
+        );
+        location.reload();
+        return;
+      }
+      majIndicateurSynchro();
+      $("#etat-synchro").textContent = "Connecté ✔ Les données de cet ordinateur ont été enregistrées en ligne.";
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ---------- Panneau « Ajuster le logo » ----------
@@ -1520,6 +1652,28 @@
       etat.textContent = e.message;
     }
   });
+
+  $("#btn-synchro").addEventListener("click", () => {
+    $("#code-acces").value = "";
+    $("#erreur-synchro").hidden = true;
+    majIndicateurSynchro();
+    $("#dlg-synchro").showModal();
+  });
+  $("#btn-synchro-ok").addEventListener("click", (e) => {
+    e.preventDefault();
+    connecterSynchro();
+  });
+  $("#btn-synchro-deco").addEventListener("click", () => {
+    if (!confirm("Déconnecter cet ordinateur ? Tes données restent en ligne et dans ce navigateur, mais ne seront plus synchronisées ici.")) return;
+    Synchro.deconnecter();
+    majIndicateurSynchro();
+  });
+  majIndicateurSynchro();
+  // Récupère les changements faits sur un autre ordinateur quand on revient sur la page, et toutes les minutes
+  const actualiser = () => Synchro.actif() && document.visibilityState === "visible" && Synchro.tirer();
+  window.addEventListener("focus", actualiser);
+  document.addEventListener("visibilitychange", actualiser);
+  setInterval(actualiser, 60000);
 
   window.addEventListener("resize", ajusterApercu);
   feuille.addEventListener("load", ajusterApercu, true); // logo chargé

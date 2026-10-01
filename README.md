@@ -27,6 +27,7 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
   « Rogner les marges vides » enlève le blanc autour du logo (souvent la cause d'un logo qui paraît minuscule)
 - **👥 Clients** : chaque client est enregistré à la fin de sa facture. Pour le refacturer : « Nouvelle facture pour le même client »,
   ou choisis-le au début d'une nouvelle facture ; ses adresses sont reprises et on passe directement à la commande et aux produits
+- **☁ Synchroniser** : retrouve tes réglages, ton logo, tes clients et tes factures sur tous tes ordinateurs (voir plus bas)
 - **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo, de tes infos, de tes clients et de tes factures dans un fichier, à restaurer en 1 clic
 
 ## Mettre en ligne sur Vercel
@@ -37,6 +38,29 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
    `OPENAI_API_KEY` = ta clé OpenAI, puis redéploie.
    Optionnel : `OPENAI_MODEL` pour choisir le modèle (par défaut `gpt-5.4-mini`).
    Sans clé, le site marche quand même : tu remplis juste à la main.
+
+## Retrouver ses données sur plusieurs ordinateurs (☁ Synchroniser)
+
+À faire une seule fois sur Vercel :
+
+1. Dans ton projet Vercel : **Storage** → **Create Database** (ou **Marketplace**) → **Upstash** → **Redis** (offre gratuite)
+   → crée la base et **connecte-la au projet**. Vercel ajoute tout seul les variables `KV_REST_API_URL` et `KV_REST_API_TOKEN`
+   (ou `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, les deux marchent).
+2. **Settings → Environment Variables** : ajoute `CODE_ACCES` = un mot de passe long que toi seul connais.
+3. **Redéploie** le projet.
+
+Puis sur chaque ordinateur : bouton **☁ Synchroniser** → tape ton code d'accès → **Connecter**.
+
+- Le premier ordinateur connecté envoie ses données en ligne ; les suivants les récupèrent.
+- Ensuite tout s'enregistre en ligne automatiquement (quelques secondes après chaque changement) et les autres ordinateurs
+  récupèrent les changements à l'ouverture, quand tu reviens sur l'onglet, et toutes les minutes.
+- Si deux ordinateurs modifient en même temps, rien n'est perdu : les factures sont fusionnées une par une
+  (une facture validée l'emporte sur un brouillon ; entre deux brouillons, le plus récent).
+- Valider une facture demande une connexion : le site vérifie la dernière version en ligne avant de donner le numéro,
+  donc deux ordinateurs ne peuvent jamais attribuer le même numéro.
+- Sans connexion internet, le site continue de marcher ; les changements partent dès que la connexion revient.
+- Les données (dont les adresses de tes clients) sont stockées dans ta base Upstash, protégées par ton code d'accès.
+  Ne donne ce code à personne.
 
 ## Mettre TA facture (logo, police, infos de ton entreprise)
 

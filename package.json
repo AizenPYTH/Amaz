@@ -8,6 +8,7 @@
     "dev": "vercel dev"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "openai": "^7.25.0",
     "zod": "^4.6.5"
   },
