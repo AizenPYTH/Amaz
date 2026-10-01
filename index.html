@@ -14,6 +14,7 @@
   <header class="barre no-print">
     <div class="marque">🧾 Générateur de factures</div>
     <div class="actions">
+      <button id="btn-profil" class="btn btn-secondaire" type="button">⚙ Mon entreprise</button>
       <button id="btn-ia" class="btn btn-secondaire" type="button">✨ Coller la commande (IA)</button>
       <button id="btn-nouvelle" class="btn btn-secondaire" type="button">Nouvelle facture</button>
       <button id="btn-pdf" class="btn btn-principal" type="button">Télécharger le PDF</button>
@@ -41,15 +42,81 @@
     </section>
   </main>
 
+  <!-- Coller une commande : l'IA pré-remplit UNIQUEMENT la partie qui change -->
   <dialog id="dlg-ia" class="no-print">
     <form method="dialog" class="dlg">
-      <h2>✨ Remplir avec l'IA</h2>
-      <p>Colle ici tout ce que tu as sur la commande (mail de confirmation, adresse, articles, prix…). L'IA pré-remplit la facture, puis je te repose les questions une par une pour que tu valides.</p>
-      <textarea id="texte-ia" rows="12" placeholder="Ex : Commande n° 402-1234567-1234567 du 28/09/2026&#10;Jean Dupont, 25 avenue des Exemples, 75015 Paris&#10;1 x Casque audio Bluetooth 49,90 € TTC"></textarea>
+      <h2>✨ Pré-remplir avec l'IA</h2>
+      <p>Colle le texte de la commande (mail de confirmation, adresse, articles, prix…) et/ou joins une capture ou un PDF. L'IA remplit seulement les infos du client et de la commande : ton logo et ton entreprise ne bougent pas.</p>
+      <textarea id="texte-ia" rows="10" placeholder="Ex : Commande n° 403-1234567-1234567 du 08/12/2025&#10;Jean Dupont, 7 square de l'Exemple, 13001 Marseille&#10;1 x Ordinateur portable 14 pouces 1 299,00 € TTC"></textarea>
+      <label class="fichier">📎 Joindre une capture ou un PDF (facultatif)
+        <input id="fichier-ia" type="file" accept="image/*,application/pdf">
+      </label>
       <p id="erreur-ia" class="erreur" hidden></p>
       <div class="dlg-actions">
         <button value="annuler" class="btn btn-secondaire">Annuler</button>
         <button id="btn-ia-go" value="ok" class="btn btn-principal">Pré-remplir</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Mon entreprise : la partie FIXE de la facture -->
+  <dialog id="dlg-profil" class="no-print">
+    <form method="dialog" class="dlg" id="form-profil">
+      <h2>⚙ Mon entreprise (partie fixe de la facture)</h2>
+      <p>Tout ce qui est ici apparaît à l'identique sur chaque facture. L'IA ne le modifie jamais quand tu remplis une facture.</p>
+
+      <div class="import-ia">
+        <label class="fichier">📄 Remplir automatiquement depuis MA facture (PDF ou image)
+          <input id="fichier-profil" type="file" accept="image/*,application/pdf">
+        </label>
+        <span id="etat-profil" class="etat"></span>
+      </div>
+
+      <fieldset>
+        <legend>Logo et couleur</legend>
+        <div class="logo-ligne">
+          <img id="apercu-logo" alt="">
+          <label class="fichier">Choisir mon logo<input id="p-logo" type="file" accept="image/*"></label>
+          <label>Couleur de la bande <input id="p-couleur" type="color"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Vendu par</legend>
+        <div class="grille">
+          <label class="large">Nom de l'entreprise<input id="p-nom"></label>
+          <label class="large">Adresse<input id="p-adresse"></label>
+          <label>Code postal<input id="p-cp"></label>
+          <label>Ville<input id="p-ville"></label>
+          <label>Pays<input id="p-pays"></label>
+          <label>N° de TVA<input id="p-tva"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Textes</legend>
+        <label>Ligne de contact (sous l'adresse du client)<input id="p-contact"></label>
+        <label>Mentions obligatoires (petit texte en bas)<textarea id="p-mentions" rows="3"></textarea></label>
+        <label>Pied de page (une ligne par retour à la ligne)<textarea id="p-pied" rows="4"></textarea></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Numérotation et articles</legend>
+        <div class="grille">
+          <label>Préfixe des n° de facture<input id="p-prefixe"></label>
+          <label>Prochain numéro<input id="p-prochain" type="number" min="1"></label>
+          <label>Libellé de la référence article<input id="p-libref"></label>
+          <label>Prix saisis en
+            <select id="p-prix"><option>TTC</option><option>HT</option></select>
+          </label>
+        </div>
+      </fieldset>
+
+      <p id="erreur-profil" class="erreur" hidden></p>
+      <div class="dlg-actions">
+        <button id="btn-profil-reset" type="button" class="btn btn-secondaire">Valeurs par défaut</button>
+        <button value="annuler" class="btn btn-secondaire">Annuler</button>
+        <button id="btn-profil-ok" value="ok" class="btn btn-principal">Enregistrer</button>
       </div>
     </form>
   </dialog>

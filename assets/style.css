@@ -96,6 +96,31 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .erreur { color: var(--erreur) !important; }
+#dlg-profil { width: min(760px, calc(100vw - 32px)); }
+.dlg fieldset { border: 1px solid var(--bord); border-radius: 8px; margin: 0 0 12px; padding: 10px 12px 12px; }
+.dlg legend { font-weight: 600; font-size: 14px; padding: 0 4px; }
+.dlg label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--doux); margin-top: 8px; }
+.dlg input:not([type=file]):not([type=color]), .dlg select {
+  font: inherit; font-size: 14px; padding: 7px 9px; border-radius: 6px;
+  border: 1px solid var(--bord); background: var(--fond); color: var(--texte); width: 100%;
+}
+.dlg input[type=color] { width: 56px; height: 34px; padding: 0; border: 1px solid var(--bord); border-radius: 6px; background: none; }
+.dlg .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.dlg .grille .large { grid-column: 1 / -1; }
+.dlg label.fichier {
+  display: inline-flex; flex-direction: row; align-items: center; cursor: pointer; color: var(--accent);
+  border: 1px dashed var(--accent); border-radius: 8px; padding: 8px 12px; margin: 8px 0 0; font-size: 14px;
+}
+.dlg label.fichier input { display: none; }
+.dlg label.fichier.choisi { border-style: solid; }
+.logo-ligne { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.logo-ligne label { margin-top: 0; }
+#apercu-logo { max-height: 48px; max-width: 200px; background: #fff; padding: 4px; border-radius: 6px; border: 1px solid var(--bord); }
+#apercu-logo:not([src]), #apercu-logo[src=""] { display: none; }
+.import-ia { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.import-ia label.fichier { margin: 0; }
+.etat { font-size: 13px; color: var(--doux); }
+@media (max-width: 560px) { .dlg .grille { grid-template-columns: 1fr; } }
 
 @media (max-width: 860px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto auto; }

@@ -1,9 +1,12 @@
 // ============================================================
 //  ASSISTANT : pose les questions une par une et remplit la facture
+//
+//  Deux parties bien séparées :
+//   - profil : la partie FIXE (logo, ton entreprise, mentions…) → « ⚙ Mon entreprise »
+//   - data   : la partie qui CHANGE à chaque facture → les questions
 // ============================================================
 
 (function () {
-  const C = window.FACTURE_CONFIG;
   const $ = (s) => document.querySelector(s);
   const fil = $("#fil");
   const champ = $("#reponse");
@@ -24,51 +27,53 @@
     set(k, v) {
       try {
         localStorage.setItem(k, JSON.stringify(v));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    del(k) {
+      try {
+        localStorage.removeItem(k);
       } catch {}
     },
   };
 
-  // ---------- Police de la facture ----------
-  (function chargerPolice() {
-    const p = C.police || {};
-    if (p.googleFont) {
-      const l = document.createElement("link");
-      l.rel = "stylesheet";
-      l.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(p.googleFont)}:wght@400;700&display=swap`;
-      document.head.appendChild(l);
-    }
-    if (p.fichierPolice) {
-      const st = document.createElement("style");
-      st.textContent = `@font-face{font-family:"PoliceFacture";src:url("${p.fichierPolice}");font-weight:100 900;}`;
-      document.head.appendChild(st);
-    }
-    const nom = p.fichierPolice ? "PoliceFacture" : p.googleFont || p.nom || "Arial";
-    document.documentElement.style.setProperty("--police-facture", `"${nom}"`);
-  })();
+  // ---------- Profil (partie fixe) ----------
+  const C = window.FACTURE_CONFIG;
+  const profilParDefaut = () => JSON.parse(JSON.stringify(C));
+  let P = fusionner(profilParDefaut(), store.get("facture.profil", {}), true);
+
+  function appliquerPolice() {
+    document.documentElement.style.setProperty("--police-facture", `"${P.police || "Arial"}"`);
+  }
+  appliquerPolice();
 
   // ---------- Utilitaires ----------
   const pad = (n, l = 2) => String(n).padStart(l, "0");
-  const dateFR = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-  const aujourdhui = () => dateFR(new Date());
+  const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  const dateLongue = (d) => `${pad(d.getDate())} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
+  const aujourdhui = () => dateLongue(new Date());
 
   function lireDate(v) {
     const s = v.trim().toLowerCase();
     if (/^auj/.test(s)) return aujourdhui();
-    if (s === "hier") return dateFR(new Date(Date.now() - 864e5));
+    if (s === "hier") return dateLongue(new Date(Date.now() - 864e5));
+    let j, mo, a;
     let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    if (m) return `${pad(m[3])}/${pad(m[2])}/${m[1]}`;
-    m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?$/);
-    if (m) {
-      let an = m[3] || String(new Date().getFullYear());
-      if (an.length === 2) an = "20" + an;
-      return `${pad(m[1])}/${pad(m[2])}/${an}`;
+    if (m) [a, mo, j] = [m[1], m[2], m[3]];
+    m = m ? null : s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?$/);
+    if (m) [j, mo, a] = [m[1], m[2], m[3] || String(new Date().getFullYear())];
+    if (j && +mo >= 1 && +mo <= 12) {
+      if (a.length === 2) a = "20" + a;
+      return `${pad(j)} ${MOIS[+mo - 1]} ${a}`;
     }
     return v.trim();
   }
 
   function lirePrix(v) {
-    const s = v.toLowerCase();
-    const base = /\bht\b/.test(s) ? "HT" : /\bttc\b/.test(s) ? "TTC" : C.prixSaisisEn;
+    const s = String(v).toLowerCase();
+    const base = /\bht\b/.test(s) ? "HT" : /\bttc\b/.test(s) ? "TTC" : P.prixSaisisEn;
     let n = s.replace(/[^0-9,.\-]/g, "");
     if (n.includes(",")) n = n.replace(/\./g, "").replace(",", ".");
     const prix = parseFloat(n);
@@ -84,11 +89,15 @@
 
   const nomComplet = (d) => [d.client?.prenom, d.client?.nom].filter(Boolean).join(" ");
 
-  function prochainNumero() {
-    const n = C.numeroFacture;
-    const dernier = store.get("facture.compteur", n.premierNumero - 1);
-    return n.prefixe + pad(dernier + 1, n.chiffres);
+  function referenceAleatoire() {
+    const a = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
+    const r = new Uint32Array(16);
+    crypto.getRandomValues(r);
+    return Array.from(r, (x) => a[x % a.length]).join("");
   }
+
+  const compteur = () => store.get("facture.compteur", 0);
+  const prochainNumero = () => P.prefixeFacture + pad(compteur() + 1, P.chiffresFacture);
 
   const get = (o, chemin) => chemin.split(".").reduce((x, k) => (x == null ? x : x[k]), o);
   function set(o, chemin, v) {
@@ -98,15 +107,29 @@
     x[ks[ks.length - 1]] = v;
   }
 
-  // ---------- Données de la facture ----------
+  // garderVides : un champ volontairement vidé (ex : pas de ligne de contact) reste vide
+  function fusionner(cible, source, garderVides = false) {
+    for (const [k, v] of Object.entries(source || {})) {
+      if (v == null || (v === "" && !garderVides)) continue;
+      if (Array.isArray(v)) cible[k] = v;
+      else if (typeof v === "object")
+        fusionner((cible[k] = cible[k] && typeof cible[k] === "object" ? cible[k] : {}), v, garderVides);
+      else cible[k] = v;
+    }
+    return cible;
+  }
+
+  // ---------- Données de la facture (partie qui change) ----------
   const vide = () => ({
     client: {},
-    facturation: { pays: "France" },
+    facturation: { pays: "FR" },
+    societe: {},
+    commercialeIdentique: null,
+    commerciale: { pays: "FR" },
     livraisonIdentique: null,
-    livraison: { pays: "France" },
-    vendeur: "",
+    livraison: { pays: "FR" },
     commande: {},
-    facture: {},
+    facture: { referencePaiement: referenceAleatoire() },
     articles: [{}],
     fraisLivraison: null,
   });
@@ -117,7 +140,6 @@
   let preRempli = false;
 
   // ---------- Liste des questions ----------
-  // Champ texte simple
   const q = (chemin, question, opts = {}) => ({
     id: chemin,
     question,
@@ -126,67 +148,92 @@
     ...opts,
   });
 
+  const ouiNon = (id, question, lire, ecrire, defaut = "Oui") => ({
+    id,
+    question,
+    choix: ["Oui", "Non"],
+    valeur: (d) => (lire(d) == null ? "" : lire(d) ? "Oui" : "Non"),
+    defaut: () => defaut,
+    valider: (v) => (/^(o|oui|n|non)$/i.test(v) ? "" : "Réponds Oui ou Non."),
+    appliquer: (d, v) => ecrire(d, /^o/i.test(v)),
+  });
+
+  const questionsAdresse = (racine, titre) => [
+    q(`${racine}.adresse`, `${titre} : numéro et rue ?`),
+    q(`${racine}.complement`, `${titre} : complément (bâtiment, étage…) ? (facultatif)`, { optionnel: true }),
+    q(`${racine}.cp`, `${titre} : code postal / arrondissement ? (ex : 13001)`),
+    q(`${racine}.ville`, `${titre} : ville ?`, { defaut: (d) => villeDepuisCP(get(d, `${racine}.cp`) || "") }),
+    q(`${racine}.pays`, `${titre} : pays ?`, { defaut: () => "FR" }),
+  ];
+
   function etapes(d) {
     const liste = [
       q("client.prenom", "Prénom du client ?"),
       q("client.nom", "Nom du client ?"),
-      q("client.societe", "Société du client ? (facultatif)", { optionnel: true }),
-      q("facturation.adresse", "Adresse de facturation (numéro et rue) ?"),
-      q("facturation.complement", "Complément d'adresse ? (bâtiment, étage… facultatif)", { optionnel: true }),
-      q("facturation.cp", "Code postal / arrondissement ? (ex : 75011)"),
-      q("facturation.ville", "Ville ?", { defaut: (d) => villeDepuisCP(d.facturation?.cp || "") }),
-      {
-        id: "livraisonIdentique",
-        question: "L'adresse de livraison est-elle la même que l'adresse de facturation ?",
-        choix: ["Oui", "Non"],
-        valeur: (d) => (d.livraisonIdentique == null ? "" : d.livraisonIdentique ? "Oui" : "Non"),
-        defaut: () => "Oui",
-        valider: (v) => (/^(o|oui|n|non)$/i.test(v) ? "" : "Réponds Oui ou Non."),
-        appliquer: (d, v) => (d.livraisonIdentique = /^o/i.test(v)),
-      },
+      ...questionsAdresse("facturation", "Adresse du client"),
+      q("societe.nom", "Nom de la société du client, pour l'« Adresse commerciale » ? (facultatif — « - » si c'est un particulier)", {
+        optionnel: true,
+      }),
     ];
 
+    if (d.societe?.nom) {
+      liste.push(
+        q("societe.tva", "N° de TVA de la société du client ? (facultatif)", { optionnel: true }),
+        ouiNon(
+          "commercialeIdentique",
+          "L'adresse commerciale est-elle la même que l'adresse du client ?",
+          (d) => d.commercialeIdentique,
+          (d, b) => (d.commercialeIdentique = b)
+        )
+      );
+      if (d.commercialeIdentique === false) liste.push(...questionsAdresse("commerciale", "Adresse commerciale"));
+    }
+
+    liste.push(
+      ouiNon(
+        "livraisonIdentique",
+        "L'adresse de livraison est-elle la même que l'adresse du client ?",
+        (d) => d.livraisonIdentique,
+        (d, b) => (d.livraisonIdentique = b)
+      )
+    );
     if (d.livraisonIdentique === false) {
       liste.push(
         q("livraison.nom", "Nom du destinataire de la livraison ?", { defaut: nomComplet }),
-        q("livraison.adresse", "Adresse de livraison (numéro et rue) ?"),
-        q("livraison.complement", "Complément d'adresse de livraison ? (facultatif)", { optionnel: true }),
-        q("livraison.cp", "Code postal / arrondissement de livraison ?"),
-        q("livraison.ville", "Ville de livraison ?", { defaut: (d) => villeDepuisCP(d.livraison?.cp || "") })
+        ...questionsAdresse("livraison", "Adresse de livraison")
       );
     }
 
     liste.push(
-      q("vendeur", "Vendu par ? (marque / vendeur affiché sur la facture)", {
-        defaut: () => store.get("facture.dernierVendeur", C.venduParDefaut),
-      }),
-      q("commande.numero", "Numéro de commande ?"),
-      q("commande.date", "Date de la commande ?", {
-        choix: ["Aujourd'hui", "Hier"],
-        defaut: aujourdhui,
-        transformer: lireDate,
-      }),
+      q("commande.numero", "Numéro de la commande ?"),
+      q("commande.date", "Date de la commande ?", { choix: ["Aujourd'hui", "Hier"], defaut: aujourdhui, transformer: lireDate }),
       q("commande.par", "Commandé par ?", { defaut: nomComplet }),
-      q("facture.numero", "Numéro de facture ?", { defaut: prochainNumero }),
-      q("facture.date", "Date de la facture ?", { choix: ["Aujourd'hui"], defaut: aujourdhui, transformer: lireDate })
+      q("facture.numero", "Numéro de la facture ?", { defaut: prochainNumero }),
+      q("facture.date", "Date de la facture / de la livraison ?", { choix: ["Aujourd'hui"], defaut: aujourdhui, transformer: lireDate }),
+      q("facture.referencePaiement", "Référence de paiement ?", {
+        choix: ["Nouvelle référence au hasard"],
+        defaut: () => referenceAleatoire(),
+        transformer: (v) => (/^nouvelle r/i.test(v) ? referenceAleatoire() : v),
+      })
     );
 
     const articles = d.articles && d.articles.length ? d.articles : [{}];
     articles.forEach((_, i) => {
       const n = articles.length > 1 || i > 0 ? ` n°${i + 1}` : "";
       liste.push(
-        q(`articles.${i}.description`, `Article${n} : désignation du produit ?`),
-        q(`articles.${i}.quantite`, `Quantité${n} ?`, {
+        q(`articles.${i}.description`, `Article${n} : description du produit ?`),
+        q(`articles.${i}.reference`, `Article${n} : référence (${P.libelleReference}) ? (facultatif)`, { optionnel: true }),
+        q(`articles.${i}.quantite`, `Article${n} : quantité ?`, {
           defaut: () => "1",
-          valider: (v) => (/^\d+([.,]\d+)?$/.test(v.trim()) && parseFloat(v.replace(",", ".")) > 0 ? "" : "Mets un nombre (ex : 1)."),
-          transformer: (v) => parseFloat(v.replace(",", ".")),
+          valider: (v) => (/^\d+([.,]\d+)?$/.test(String(v).trim()) && parseFloat(String(v).replace(",", ".")) > 0 ? "" : "Mets un nombre (ex : 1)."),
+          transformer: (v) => parseFloat(String(v).replace(",", ".")),
         }),
         {
           id: `articles.${i}.prix`,
-          question: `Prix unitaire${n} (${C.prixSaisisEn}) ? — tape « ht » ou « ttc » après le prix pour préciser`,
+          question: `Article${n} : prix unitaire (${P.prixSaisisEn}) ? — tape « ht » ou « ttc » après le prix pour préciser`,
           valeur: (d) => {
             const a = d.articles?.[i];
-            return a && a.prix != null ? `${String(a.prix).replace(".", ",")} ${a.base || C.prixSaisisEn}` : "";
+            return a && a.prix != null ? `${String(a.prix).replace(".", ",")} ${a.base || P.prixSaisisEn}` : "";
           },
           valider: (v) => (lirePrix(v) ? "" : "Je n'ai pas compris le prix (ex : 49,90 ou 41,58 ht)."),
           appliquer: (d, v) => Object.assign(d.articles[i], lirePrix(v)),
@@ -248,8 +295,8 @@
     cadre.style.height = `${h * echelle}px`;
   }
 
-  function rafraichir() {
-    if (feuille.getAttribute("contenteditable") !== "true") feuille.innerHTML = window.Facture.rendre(data);
+  function rafraichir(forcer) {
+    if (forcer || feuille.getAttribute("contenteditable") !== "true") feuille.innerHTML = window.Facture.rendre(data, P);
     store.set("facture.brouillon", data);
     ajusterApercu();
   }
@@ -261,14 +308,13 @@
   }
 
   function poser() {
-    const liste = etapes(data);
-    const etape = liste[pos];
+    const etape = etapes(data)[pos];
     zoneSuggestions.innerHTML = "";
     $("#btn-retour").disabled = historique.length === 0;
 
     if (etape.fin) {
-      const t = window.Facture.calculer(data);
-      const m = window.Facture.money;
+      const t = window.Facture.calculer(data, P);
+      const m = (n) => window.Facture.money(n, P.devise);
       bulle(
         `✅ Facture prête !\nTotal HT : ${m(t.totalHT)}\nTVA : ${m(t.totalTVA)}\nTotal TTC : ${m(t.totalTTC)}\n\n` +
           "Clique sur « Télécharger le PDF ». Tu peux aussi cliquer directement dans la facture pour corriger un détail.",
@@ -285,8 +331,7 @@
     champ.disabled = false;
     champ.placeholder = "Ta réponse… (Entrée pour valider)";
     feuille.removeAttribute("contenteditable");
-    const proposee = valeurProposee(etape);
-    bulle(etape.question, "ia", proposee);
+    bulle(etape.question, "ia", valeurProposee(etape));
     (etape.choix || []).forEach((c) => ajouterPuce(c, () => repondre(c)));
     if (preRempli) ajouterPuce("✔ Valider tout ce qui est pré-rempli", toutValider);
     champ.value = "";
@@ -326,10 +371,7 @@
     if (!etape || etape.fin) return;
     const affiche = brut.trim() || valeurProposee(etape) || "(vide)";
     const err = appliquerReponse(etape, brut);
-    if (err) {
-      bulle(err, "erreur");
-      return;
-    }
+    if (err) return bulle(err, "erreur");
     bulle(affiche === "-" ? "(vide)" : affiche, "moi");
     rafraichir();
     poser();
@@ -374,48 +416,69 @@
   }
 
   function telechargerPDF() {
-    // Mémorise le compteur et le dernier vendeur utilisé
-    const n = C.numeroFacture;
+    // Mémorise le compteur de factures
     const num = data.facture?.numero || "";
-    if (num.startsWith(n.prefixe)) {
-      const v = parseInt(num.slice(n.prefixe.length), 10);
-      if (!isNaN(v)) store.set("facture.compteur", Math.max(v, store.get("facture.compteur", 0)));
+    if (num.startsWith(P.prefixeFacture)) {
+      const v = parseInt(num.slice(P.prefixeFacture.length), 10);
+      if (!isNaN(v)) store.set("facture.compteur", Math.max(v, compteur()));
     }
-    if (data.vendeur) store.set("facture.dernierVendeur", data.vendeur);
-
     const titre = document.title;
-    document.title = `Facture ${num || ""}`.trim();
+    document.title = `Facture ${num}`.trim();
     window.print();
     setTimeout(() => (document.title = titre), 500);
   }
 
-  // ---------- Remplissage par l'IA ----------
-  function fusionner(cible, source) {
-    for (const [k, v] of Object.entries(source || {})) {
-      if (v == null || v === "") continue;
-      if (Array.isArray(v)) cible[k] = v;
-      else if (typeof v === "object") fusionner((cible[k] = cible[k] && typeof cible[k] === "object" ? cible[k] : {}), v);
-      else cible[k] = v;
-    }
-    return cible;
+  // ---------- Fichiers ----------
+  const lireFichier = (f) =>
+    new Promise((ok, ko) => {
+      const r = new FileReader();
+      r.onload = () => ok(r.result);
+      r.onerror = () => ko(new Error("Impossible de lire le fichier."));
+      r.readAsDataURL(f);
+    });
+
+  // Réduit une image (logo) pour qu'elle tienne dans le stockage du navigateur.
+  async function preparerLogo(f) {
+    const url = await lireFichier(f);
+    if (f.type === "image/svg+xml") return url;
+    const img = new Image();
+    await new Promise((ok, ko) => ((img.onload = ok), (img.onerror = () => ko(new Error("Image illisible.")), (img.src = url))));
+    const max = 900;
+    const e = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * e);
+    c.height = Math.round(img.height * e);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/png");
   }
 
-  async function remplirIA(texte) {
+  async function fichierPourIA(input) {
+    const f = input.files[0];
+    if (!f) return null;
+    if (f.size > 3 * 1024 * 1024) throw new Error("Fichier trop lourd (3 Mo maximum).");
+    return { nom: f.name, type: f.type, contenu: await lireFichier(f) };
+  }
+
+  async function appelIA(url, corps) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(json.erreur || `Erreur ${r.status}`);
+    return json;
+  }
+
+  // ---------- Pré-remplir une facture avec l'IA (partie qui change uniquement) ----------
+  async function remplirIA() {
     const btn = $("#btn-ia-go");
     const erreur = $("#erreur-ia");
     erreur.hidden = true;
     btn.disabled = true;
     btn.textContent = "Analyse en cours…";
     try {
-      const r = await fetch("/api/extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texte }),
-      });
-      const json = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(json.erreur || `Erreur ${r.status}`);
+      const texte = $("#texte-ia").value.trim();
+      const fichier = await fichierPourIA($("#fichier-ia"));
+      if (!texte && !fichier) throw new Error("Colle un texte ou joins un fichier.");
+      const { facture: extrait = {} } = await appelIA("/api/extract", { texte, fichier });
 
-      const extrait = json.facture || {};
       if (Array.isArray(extrait.articles) && extrait.articles.length === 0) delete extrait.articles;
       data = fusionner(vide(), extrait);
       if (!data.articles.length) data.articles = [{}];
@@ -426,7 +489,7 @@
       fil.innerHTML = "";
       rafraichir();
       bulle(
-        "J'ai pré-rempli la facture avec ce que j'ai trouvé. Je te repose les questions une par une : Entrée pour valider chaque valeur proposée, ou tape la bonne.",
+        "J'ai pré-rempli la facture avec ce que j'ai trouvé (ton logo et ton entreprise ne changent pas). Je te repose les questions une par une : Entrée pour valider, ou tape la bonne valeur.",
         "ia"
       );
       poser();
@@ -436,6 +499,76 @@
     } finally {
       btn.disabled = false;
       btn.textContent = "Pré-remplir";
+    }
+  }
+
+  // ---------- Fenêtre « Mon entreprise » ----------
+  const champsProfil = {
+    "p-couleur": "couleur",
+    "p-nom": "vendeur.nom",
+    "p-adresse": "vendeur.adresse",
+    "p-cp": "vendeur.cp",
+    "p-ville": "vendeur.ville",
+    "p-pays": "vendeur.pays",
+    "p-tva": "vendeur.tva",
+    "p-contact": "contact",
+    "p-mentions": "mentions",
+    "p-pied": "piedDePage",
+    "p-prefixe": "prefixeFacture",
+    "p-libref": "libelleReference",
+    "p-prix": "prixSaisisEn",
+  };
+  let logoBrouillon = null;
+
+  function remplirFormProfil(src) {
+    for (const [id, chemin] of Object.entries(champsProfil)) $("#" + id).value = get(src, chemin) ?? "";
+    $("#p-prochain").value = compteur() + 1;
+    logoBrouillon = src.logo || "";
+    $("#apercu-logo").src = logoBrouillon;
+  }
+
+  function ouvrirProfil() {
+    remplirFormProfil(P);
+    $("#erreur-profil").hidden = true;
+    $("#etat-profil").textContent = "";
+    $("#fichier-profil").value = "";
+    $("#dlg-profil").showModal();
+  }
+
+  function enregistrerProfil() {
+    const nouveau = { logo: logoBrouillon };
+    for (const [id, chemin] of Object.entries(champsProfil)) set(nouveau, chemin, $("#" + id).value.trim());
+    if (!store.set("facture.profil", nouveau)) {
+      $("#erreur-profil").textContent = "Impossible d'enregistrer (logo trop lourd ou stockage bloqué par le navigateur).";
+      $("#erreur-profil").hidden = false;
+      return;
+    }
+    const prochain = parseInt($("#p-prochain").value, 10);
+    if (prochain >= 1) store.set("facture.compteur", prochain - 1);
+    P = fusionner(profilParDefaut(), nouveau, true);
+    $("#dlg-profil").close();
+    rafraichir(true);
+    bulle("Infos de ton entreprise enregistrées ✔", "moi");
+  }
+
+  async function importerProfil() {
+    const etat = $("#etat-profil");
+    const erreur = $("#erreur-profil");
+    erreur.hidden = true;
+    try {
+      const fichier = await fichierPourIA($("#fichier-profil"));
+      if (!fichier) return;
+      etat.textContent = "⏳ L'IA lit ta facture…";
+      const { profil } = await appelIA("/api/profil", { fichier });
+      const actuel = {};
+      for (const [id, chemin] of Object.entries(champsProfil)) set(actuel, chemin, $("#" + id).value);
+      actuel.logo = logoBrouillon;
+      remplirFormProfil(fusionner(actuel, profil));
+      etat.textContent = "✔ Champs remplis depuis ta facture — vérifie, ajoute ton logo, puis Enregistrer.";
+    } catch (e) {
+      etat.textContent = "";
+      erreur.textContent = e.message || "Erreur inconnue";
+      erreur.hidden = false;
     }
   }
 
@@ -449,27 +582,58 @@
     if (confirm("Commencer une nouvelle facture ? La facture en cours sera effacée.")) nouvelle();
   });
   $("#btn-pdf").addEventListener("click", telechargerPDF);
+
   $("#btn-ia").addEventListener("click", () => {
     $("#erreur-ia").hidden = true;
+    $("#fichier-ia").value = "";
+    $("#fichier-ia").parentElement.classList.remove("choisi");
     $("#dlg-ia").showModal();
     $("#texte-ia").focus();
   });
+  $("#fichier-ia").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    e.target.parentElement.classList.toggle("choisi", !!f);
+    e.target.parentElement.firstChild.textContent = f ? `📎 ${f.name} ` : "📎 Joindre une capture ou un PDF (facultatif)";
+  });
   $("#btn-ia-go").addEventListener("click", (e) => {
     e.preventDefault();
-    const t = $("#texte-ia").value.trim();
-    if (t) remplirIA(t);
+    remplirIA();
   });
+
+  $("#btn-profil").addEventListener("click", ouvrirProfil);
+  $("#btn-profil-ok").addEventListener("click", (e) => {
+    e.preventDefault();
+    enregistrerProfil();
+  });
+  $("#btn-profil-reset").addEventListener("click", () => {
+    if (confirm("Remettre les valeurs par défaut (assets/config.js) ?")) remplirFormProfil(profilParDefaut());
+  });
+  $("#fichier-profil").addEventListener("change", importerProfil);
+  $("#p-logo").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      logoBrouillon = await preparerLogo(f);
+      $("#apercu-logo").src = logoBrouillon;
+    } catch (err) {
+      $("#erreur-profil").textContent = err.message;
+      $("#erreur-profil").hidden = false;
+    }
+  });
+
   window.addEventListener("resize", ajusterApercu);
+  feuille.addEventListener("load", ajusterApercu, true); // logo chargé
 
   // ---------- Démarrage ----------
   rafraichir();
-  feuille.addEventListener("load", ajusterApercu, true); // logo chargé
-  const reprise = store.get("facture.brouillon", null);
-  if (reprise && reprise.client && reprise.client.prenom) {
+  if (data.client && data.client.prenom) {
     bulle("J'ai repris ta facture en cours. Je te repose les questions depuis le début avec les valeurs déjà saisies (Entrée pour garder).", "ia");
     preRempli = true;
   } else {
-    bulle("Bonjour 👋 Je vais te poser les questions une par une pour remplir la facture. L'aperçu de la facture se met à jour en direct.", "ia");
+    bulle(
+      "Bonjour 👋 Je vais te poser les questions une par une pour remplir la facture. L'aperçu se met à jour en direct.\n\nPremière fois ? Clique d'abord sur « ⚙ Mon entreprise » pour mettre ton logo et tes infos.",
+      "ia"
+    );
   }
   poser();
 })();

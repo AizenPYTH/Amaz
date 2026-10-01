@@ -1,56 +1,55 @@
 // ============================================================
-//  CONFIGURATION DE TON ENTREPRISE
-//  Tout ce qui est ici est FIXE et apparaît sur chaque facture.
-//  Modifie ces valeurs une seule fois.
+//  VALEURS PAR DÉFAUT DE "MON ENTREPRISE" (la partie FIXE)
+//
+//  Tu n'es pas obligé de modifier ce fichier : sur le site, le bouton
+//  « ⚙ Mon entreprise » permet de mettre ton logo et tes infos
+//  (ou de les faire lire par l'IA depuis ta propre facture).
+//  Ce qui est réglé là-bas est gardé dans ton navigateur et
+//  remplace les valeurs ci-dessous.
+//
+//  Si tu veux que tes infos soient les mêmes sur tous tes appareils,
+//  remplis-les ici directement.
 // ============================================================
 
 window.FACTURE_CONFIG = {
-  entreprise: {
+  logo: "assets/logo.svg",
+  couleur: "#1f6aa8", // couleur de la bande en haut de la facture
+
+  // Bloc « Vendu par » + encadré « Payé »
+  vendeur: {
     nom: "Ma Société SAS",
     adresse: "12 rue de l'Exemple",
     cp: "75011",
     ville: "Paris",
     pays: "France",
-    siret: "123 456 789 00012",
-    rcs: "RCS Paris 123 456 789",
-    tvaIntra: "FR12 123456789",
-    capital: "Capital social : 1 000 €",
-    email: "contact@masociete.fr",
-    telephone: "01 23 45 67 89",
+    tva: "FR00123456789",
   },
 
-  // Logo : remplace le fichier assets/logo.svg par ton logo
-  // (ou mets assets/logo.png et change le chemin ici).
-  logo: "assets/logo.svg",
-  logoHauteur: "56px",
+  // Ligne sous l'adresse du client
+  contact: "Pour toute question, contactez-nous à l'adresse : contact@masociete.fr",
 
-  // Police de la facture.
-  // - Si c'est une police Google Fonts : mets son nom dans googleFont (ex : "Roboto").
-  // - Si tu as un fichier de police (.ttf / .woff2) : mets-le dans assets/fonts/
-  //   et indique son chemin dans fichierPolice.
-  police: {
-    nom: "Arial",
-    googleFont: "",
-    fichierPolice: "", // ex : "assets/fonts/MaPolice.woff2"
-  },
+  // Petit texte au-dessus du trait en bas de page
+  mentions:
+    "Mentions obligatoires : Escompte pour paiement anticipé : néant. En cas de retard de paiement, des pénalités au taux de 3 fois le taux d'intérêt légal sont applicables, ainsi qu'une indemnité forfaitaire de 40 euros pour frais de recouvrement.",
 
-  // Valeur proposée par défaut pour "Vendu par" (tu peux la changer à chaque facture).
-  venduParDefaut: "Ma Société SAS",
+  // Lignes en bas de page (une ligne par retour à la ligne)
+  piedDePage:
+    "Ma Société SAS - 12 rue de l'Exemple, 75011 Paris, France\nSIREN : 123456789 • RCS Paris • APE : 4791B • Capital social : 1 000 EUR • TVA : FR00123456789",
 
   // Numérotation automatique des factures : PREFIXE + compteur (ex : FR-2026-00001)
-  numeroFacture: {
-    prefixe: "FR-" + new Date().getFullYear() + "-",
-    chiffres: 5,
-    premierNumero: 1,
-  },
+  prefixeFacture: "FR-" + new Date().getFullYear() + "-",
+  chiffresFacture: 5,
+
+  // Libellé de la petite ligne de référence sous chaque article (ex : « Réf. », « SKU », « EAN »)
+  libelleReference: "Réf.",
+
+  // Police de la facture (Arial par défaut, comme le modèle)
+  police: "Arial",
 
   tauxTVA: 0.2, // 20 %
   devise: "EUR",
 
   // Les prix que tu tapes sont-ils TTC ou HT par défaut ?
-  // (tu peux toujours forcer en tapant "41,58 ht" ou "49,90 ttc")
+  // (tu peux toujours forcer en tapant « 41,58 ht » ou « 49,90 ttc »)
   prixSaisisEn: "TTC",
-
-  piedDePage:
-    "Ma Société SAS — 12 rue de l'Exemple, 75011 Paris — SIRET 123 456 789 00012 — TVA FR12 123456789",
 };

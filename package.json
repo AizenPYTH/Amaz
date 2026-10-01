@@ -8,7 +8,7 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
+    "openai": "^7.25.0",
     "zod": "^4.6.5"
   },
   "engines": {

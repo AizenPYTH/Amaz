@@ -1,116 +1,94 @@
-// Fonction serverless Vercel : POST /api/extract
-// Reçoit le texte brut d'une commande et renvoie les champs de la facture pré-remplis.
-// Nécessite la variable d'environnement ANTHROPIC_API_KEY (réglages du projet Vercel).
+// POST /api/extract — pré-remplit UNIQUEMENT la partie qui change d'une facture
+// (client, adresses, commande, articles, prix) à partir d'un texte et/ou d'un fichier.
+// La partie fixe (logo, entreprise qui vend, mentions, pied de page) n'est volontairement
+// pas dans le schéma : l'IA ne peut pas la modifier.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { zodTextFormat } from "openai/helpers/zod";
+import { MODELE, clientOpenAI, lireCorps, partieFichier, erreurIA, verifierMethode } from "./_openai.js";
 
 export const config = { maxDuration: 60 };
 
-const texte = z.string().nullable();
+const t = z.string().nullable();
 
 const Adresse = z.object({
-  adresse: texte.describe("Numéro et nom de rue"),
-  complement: texte.describe("Bâtiment, étage, appartement, etc."),
-  cp: texte.describe("Code postal (ex : 75011)"),
-  ville: texte,
-  pays: texte,
+  adresse: t.describe("Numéro et nom de rue"),
+  complement: t.describe("Bâtiment, étage, appartement…"),
+  cp: t.describe("Code postal, ex : 13001"),
+  ville: t,
+  pays: t.describe("Code pays sur 2 lettres, ex : FR"),
 });
 
-const FactureSchema = z.object({
-  client: z.object({
-    prenom: texte,
-    nom: texte,
-    societe: texte.describe("Raison sociale du client si c'est une entreprise"),
+const FactureVariable = z.object({
+  client: z.object({ prenom: t, nom: t }),
+  facturation: Adresse.describe("Adresse du client (destinataire de la facture)"),
+  societe: z.object({
+    nom: t.describe("Raison sociale du client s'il achète pour une entreprise, sinon null"),
+    tva: t.describe("N° de TVA intracommunautaire DU CLIENT, sinon null"),
   }),
-  facturation: Adresse,
-  livraisonIdentique: z
-    .boolean()
-    .nullable()
-    .describe("true si l'adresse de livraison est la même que celle de facturation, null si inconnu"),
-  livraison: Adresse.extend({ nom: texte.describe("Nom du destinataire de la livraison") }),
-  vendeur: texte.describe("Vendeur / marque indiqué après « Vendu par »"),
+  commercialeIdentique: z.boolean().nullable().describe("true si l'adresse de la société du client est la même que celle du client"),
+  commerciale: Adresse.describe("Adresse de la société du client si elle est différente, sinon tout à null"),
+  livraisonIdentique: z.boolean().nullable().describe("true si la livraison se fait à l'adresse du client"),
+  livraison: Adresse.extend({ nom: t.describe("Nom du destinataire de la livraison") }),
   commande: z.object({
-    numero: texte,
-    date: texte.describe("Date de la commande au format JJ/MM/AAAA"),
-    par: texte.describe("Nom de la personne qui a passé la commande"),
+    numero: t,
+    date: t.describe("Date de la commande, format « 08 décembre 2025 »"),
+    par: t.describe("Personne qui a passé la commande"),
   }),
   articles: z.array(
     z.object({
       description: z.string(),
+      reference: t.describe("Référence produit (SKU, EAN, code article…) si présente"),
       quantite: z.number(),
-      prix: z.number().describe("Prix UNITAIRE de l'article"),
-      base: z.enum(["TTC", "HT"]).describe("Le prix unitaire indiqué est-il TTC ou HT ?"),
+      prix: z.number().describe("Prix UNITAIRE"),
+      base: z.enum(["TTC", "HT"]).describe("Le prix unitaire est-il TTC ou HT ?"),
     })
   ),
-  fraisLivraison: z.number().nullable().describe("Frais de livraison TTC, 0 si gratuits, null si inconnu"),
+  fraisLivraison: z.number().nullable().describe("Frais de livraison TTC, 0 si gratuits, null si inconnus"),
 });
 
-const SYSTEME = `Tu extrais les informations d'une commande pour remplir une facture française.
+const CONSIGNES = `Tu aides à remplir une facture française. La facture a deux parties :
+
+1) PARTIE FIXE — tu n'y touches JAMAIS et tu ne la renvoies pas :
+   le logo, l'entreprise qui vend (bloc « Vendu par » : nom, adresse, n° de TVA), la ligne de contact,
+   les mentions obligatoires, le pied de page, le numéro et la date de la facture.
+   Si le document contient un vendeur, un logo ou des mentions légales, ignore-les.
+
+2) PARTIE QUI CHANGE — c'est la seule que tu extrais :
+   le client (prénom, nom, adresse), la société du client et son n° de TVA (adresse commerciale),
+   l'adresse de livraison, la commande (numéro, date, commandé par), les articles (description,
+   référence, quantité, prix unitaire) et les frais de livraison.
+
 Règles :
-- N'invente rien : si une information n'apparaît pas dans le texte, mets null.
+- N'invente rien : si une info n'apparaît pas, mets null.
 - Sépare bien prénom et nom.
-- Les dates sont au format JJ/MM/AAAA.
-- Les prix sont des nombres (49.9, pas "49,90 €"). En France les prix affichés aux particuliers sont en général TTC : choisis "TTC" sauf si le texte indique clairement HT.
-- Si une seule adresse est donnée, considère que la livraison est identique (livraisonIdentique = true).`;
+- Dates au format « 08 décembre 2025 ».
+- Prix en nombres (49.9, pas « 49,90 € »). Choisis "TTC" sauf si le prix est clairement HT.
+- Une seule adresse donnée ⇒ livraisonIdentique = true (et commercialeIdentique = true s'il y a une société).`;
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ erreur: "Méthode non autorisée" });
-  }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(501).json({
-      erreur:
-        "L'IA n'est pas configurée : ajoute la variable ANTHROPIC_API_KEY dans les réglages Vercel du projet. (Tu peux quand même remplir la facture à la main.)",
-    });
-  }
+  if (!verifierMethode(req, res)) return;
+  const openai = clientOpenAI(res);
+  if (!openai) return;
 
-  const body = typeof req.body === "string" ? safeJSON(req.body) : req.body || {};
-  const contenu = String(body.texte || "").trim();
-  if (!contenu) return res.status(400).json({ erreur: "Texte vide." });
-  if (contenu.length > 20000) return res.status(413).json({ erreur: "Texte trop long (20 000 caractères max)." });
+  const corps = lireCorps(req);
+  const texte = String(corps.texte || "").trim().slice(0, 20000);
+  const fichier = partieFichier(corps.fichier);
+  if (!texte && !fichier) return res.status(400).json({ erreur: "Colle un texte ou joins un fichier." });
 
-  const client = new Anthropic();
+  const contenu = [{ type: "input_text", text: texte ? `Informations de la commande :\n\n${texte}` : "Informations de la commande : voir le fichier joint." }];
+  if (fichier) contenu.push(fichier);
 
   try {
-    const message = await client.beta.messages.parse({
-      model: "claude-opus-5-5",
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "low", format: betaZodOutputFormat(FactureSchema) },
-      system: SYSTEME,
-      messages: [{ role: "user", content: `Voici les informations de la commande :\n\n${contenu}` }],
+    const reponse = await openai.responses.parse({
+      model: MODELE,
+      instructions: CONSIGNES,
+      input: [{ role: "user", content: contenu }],
+      text: { format: zodTextFormat(FactureVariable, "facture") },
     });
-
-    if (message.stop_reason === "refusal") {
-      return res.status(422).json({ erreur: "L'IA a refusé de traiter ce texte. Remplis la facture à la main." });
-    }
-    if (!message.parsed_output) {
-      return res.status(502).json({ erreur: "Réponse de l'IA illisible, réessaie." });
-    }
-    return res.status(200).json({ facture: message.parsed_output });
+    if (!reponse.output_parsed) return res.status(502).json({ erreur: "Réponse de l'IA illisible, réessaie." });
+    return res.status(200).json({ facture: reponse.output_parsed });
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError) {
-      return res.status(500).json({ erreur: "Clé ANTHROPIC_API_KEY invalide." });
-    }
-    if (e instanceof Anthropic.RateLimitError) {
-      return res.status(429).json({ erreur: "Trop de demandes, réessaie dans un instant." });
-    }
-    if (e instanceof Anthropic.APIError) {
-      return res.status(502).json({ erreur: `Erreur de l'IA (${e.status ?? "réseau"}).` });
-    }
-    console.error(e);
-    return res.status(500).json({ erreur: "Erreur interne." });
-  }
-}
-
-function safeJSON(s) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
+    return erreurIA(res, e);
   }
 }
