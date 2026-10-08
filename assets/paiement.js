@@ -120,13 +120,15 @@
     const s = doc.societe || {};
     const emetteur = doc.type === "recu" ? doc.contact : doc.moi;
     const beneficiaire = doc.type === "recu" ? doc.moi : doc.contact;
-    const ligne = (fr, en, valeur) =>
-      el(
-        "div",
-        { class: "d-ligne" },
-        el("div", { class: "d-libelle" }, el("b", { textContent: fr }), el("span", { textContent: en })),
-        el("div", { class: `d-valeur${valeur ? "" : " vide"}`, textContent: valeur || "—" })
-      );
+    // champ : nom de la donnée modifiable directement sur la feuille (null = non modifiable ici)
+    const ligne = (fr, en, valeur, champ = null) => {
+      const v = el("div", { class: `d-valeur${valeur ? "" : " vide"}`, textContent: valeur || "—" });
+      if (champ) v.dataset.champ = champ;
+      return el("div", { class: "d-ligne" }, el("div", { class: "d-libelle" }, el("b", { textContent: fr }), el("span", { textContent: en })), v);
+    };
+    // Côté contact (modifiable) : bénéficiaire pour un avis, émetteur pour un reçu ; ma société se règle dans Paramètres
+    const cE = doc.type === "recu" ? "contact-" : null;
+    const cB = doc.type === "recu" ? null : "contact-";
 
     const contactSociete = [s.email, s.tel].filter(Boolean).join(" · ");
     cible.style.setProperty("--interligne", `${mp.interligne}mm`);
@@ -152,15 +154,15 @@
       el(
         "div",
         { class: "d-lignes" },
-        ligne("Date", "Date", dateFR(doc.date)),
-        ligne("Montant", "Amount", doc.montant != null ? formatMontant(doc.montant, doc.devise) : ""),
-        ligne("Émetteur", "Sender", emetteur?.nom),
-        ligne("IBAN de l'émetteur", "Sender's IBAN", ibanAffiche(emetteur?.iban)),
-        ligne("Banque de l'émetteur", "Sender's bank", banqueTexte(emetteur || {})),
-        ligne("Bénéficiaire", "Beneficiary", beneficiaire?.nom),
-        ligne("IBAN du bénéficiaire", "Beneficiary's IBAN", ibanAffiche(beneficiaire?.iban)),
-        ligne("Banque du bénéficiaire", "Beneficiary's bank", banqueTexte(beneficiaire || {})),
-        ligne("Référence", "Reference", doc.reference)
+        ligne("Date", "Date", dateFR(doc.date), "date"),
+        ligne("Montant", "Amount", doc.montant != null ? formatMontant(doc.montant, doc.devise) : "", "montant"),
+        ligne("Émetteur", "Sender", emetteur?.nom, cE && cE + "nom"),
+        ligne("IBAN de l'émetteur", "Sender's IBAN", ibanAffiche(emetteur?.iban), cE && cE + "iban"),
+        ligne("Banque de l'émetteur", "Sender's bank", banqueTexte(emetteur || {}), cE && cE + "banque"),
+        ligne("Bénéficiaire", "Beneficiary", beneficiaire?.nom, cB && cB + "nom"),
+        ligne("IBAN du bénéficiaire", "Beneficiary's IBAN", ibanAffiche(beneficiaire?.iban), cB && cB + "iban"),
+        ligne("Banque du bénéficiaire", "Beneficiary's bank", banqueTexte(beneficiaire || {}), cB && cB + "banque"),
+        ligne("Référence", "Reference", doc.reference, "reference")
       ),
       el(
         "div",
@@ -290,6 +292,89 @@
     majApercu();
   }
 
+  // ---------- Modifier le texte directement sur la feuille ----------
+  // Clic sur une valeur → on la modifie ; Entrée ou clic ailleurs → le formulaire est mis à jour.
+  function appliquerTexte(champ, texte) {
+    const t = texte.replace(/\s+/g, " ").trim();
+    const vide = t === "" || t === "—";
+    switch (champ) {
+      case "date": {
+        const m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+        if (!m) return "Date au format JJ/MM/AAAA.";
+        const a = m[3].length === 2 ? "20" + m[3] : m[3];
+        $("#d-date").value = `${a}-${pad(m[2])}-${pad(m[1])}`;
+        break;
+      }
+      case "montant": {
+        const devise = (t.toUpperCase().match(/\b([A-Z]{3})\b/) || [])[1];
+        if (devise && [...$("#d-devise").options].some((o) => o.value === devise)) $("#d-devise").value = devise;
+        if (!lireMontant(t)) return "Montant non reconnu (ex : 7 550,00 EUR).";
+        $("#d-montant").value = String(lireMontant(t)).replace(".", ",");
+        break;
+      }
+      case "reference":
+        $("#d-reference").value = vide ? "" : t;
+        break;
+      case "contact-nom":
+        $("#d-c-nom").value = vide ? "" : t;
+        break;
+      case "contact-iban":
+        $("#d-c-iban").value = vide ? "" : nettoyerIBAN(t);
+        break;
+      case "contact-banque": {
+        const [banque, bic] = vide ? ["", ""] : t.split("·").map((x) => x.trim());
+        $("#d-c-banque").value = banque || "";
+        $("#d-c-bic").value = bic || "";
+        break;
+      }
+    }
+    return "";
+  }
+
+  let texteEnCours = null;
+  feuille.addEventListener("click", (e) => {
+    if (enEdition) return;
+    let v = e.target.closest("[data-champ]");
+    if (v && !v.isConnected) v = feuille.querySelector(`[data-champ="${v.dataset.champ}"]`); // feuille redessinée entre-temps
+    if (!v || v === texteEnCours) return;
+    texteEnCours = v;
+    v.contentEditable = "true";
+    v.classList.remove("vide");
+    if (v.textContent === "—") v.textContent = "";
+    v.focus();
+    const r = document.createRange();
+    r.selectNodeContents(v);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  });
+  feuille.addEventListener("keydown", (e) => {
+    if (!texteEnCours) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      texteEnCours.blur();
+    }
+    if (e.key === "Escape") {
+      const v = texteEnCours;
+      texteEnCours = null;
+      v.blur();
+      majApercu();
+    }
+  });
+  feuille.addEventListener(
+    "blur",
+    (e) => {
+      const v = e.target;
+      if (v !== texteEnCours) return;
+      texteEnCours = null;
+      const erreur = appliquerTexte(v.dataset.champ, v.textContent);
+      $("#erreur-document").textContent = erreur;
+      $("#erreur-document").hidden = !erreur;
+      if (v.dataset.champ.startsWith("contact-")) $("#d-contact").value = ""; // modifié à la main : plus le contact enregistré tel quel
+      surModification();
+    },
+    true
+  );
+
   // ---------- Modifier la mise en page (glisser les blocs) ----------
   const PX_PAR_MM = 96 / 25.4;
   let enEdition = false;
@@ -301,6 +386,7 @@
     $("#r-colonne").value = mp.colonne;
     $("#outils-edition").hidden = !enEdition;
     $("#aide-edition").hidden = !enEdition;
+    $("#aide-texte").hidden = enEdition;
     $("#btn-edition").hidden = enEdition;
     feuille.classList.toggle("edition", enEdition);
   }
@@ -716,10 +802,9 @@
       allerA(a.dataset.aller);
     }
   });
-  for (const id of champs) {
-    $("#" + id).addEventListener("input", surModification);
-    $("#" + id).addEventListener("change", surModification);
-  }
+  // « input » suffit (champs texte, date et listes) : « change » redessinerait la feuille au moment
+  // où l'on clique dessus pour modifier un texte.
+  for (const id of champs) if (id !== "d-contact") $("#" + id).addEventListener("input", surModification);
   $("#d-contact").addEventListener("change", () => {
     choisirContact();
     surModification();

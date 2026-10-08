@@ -93,6 +93,11 @@ body { min-height: 100vh; }
   text-align: center; font-size: 6.3pt; color: #9a9a9a; line-height: 1.5;
 }
 
+/* Texte modifiable directement sur la feuille (aperçu seulement) */
+#feuille:not(.edition) [data-champ] { cursor: text; border-radius: 1mm; }
+#feuille:not(.edition) [data-champ]:hover { background: #eef4ff; }
+#feuille [data-champ][contenteditable="true"] { background: #fff8d6; outline: 1.5px solid #1f6feb; outline-offset: .8mm; max-height: none; overflow: visible; }
+
 /* Mode « Modifier la mise en page » */
 .doc-a4.edition [data-bloc] { outline: 1.5px dashed #1f6feb; outline-offset: 1.5mm; cursor: move; touch-action: none; user-select: none; }
 .doc-a4.edition [data-bloc]:hover { outline-style: solid; }
