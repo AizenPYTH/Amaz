@@ -79,6 +79,16 @@
     </section>
 
     <section class="apercu-zone" aria-label="Aperçu">
+      <div class="barre-edition">
+        <button id="btn-edition" class="btn btn-secondaire" type="button">✏ Modifier la mise en page</button>
+        <span id="outils-edition" hidden>
+          <label>Espacement des lignes <input id="r-interligne" type="range" min="8" max="20" step="0.5"></label>
+          <label>Colonne des valeurs <input id="r-colonne" type="range" min="55" max="125" step="1"></label>
+          <button id="btn-edition-reset" class="btn btn-secondaire" type="button">Réinitialiser</button>
+          <button id="btn-edition-fin" class="btn btn-principal" type="button">Terminer</button>
+        </span>
+        <span id="aide-edition" class="aide" hidden>Fais glisser le logo, le titre, les informations ou le pied de page. Tout est enregistré pour les prochains documents.</span>
+      </div>
       <div class="apercu-cadre" id="cadre"><div id="feuille" class="doc-a4"></div></div>
     </section>
   </main>

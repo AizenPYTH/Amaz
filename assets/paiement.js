@@ -97,7 +97,25 @@
     return e;
   }
 
+  // ---------- Mise en page enregistrée (positions en mm sur la page A4) ----------
+  const MISE_EN_PAGE_DEFAUT = {
+    logo: { x: 27, y: 30 },
+    titre: { x: 27, y: 74 },
+    lignes: { x: 27, y: 99 },
+    pied: { x: 20, y: 262 },
+    interligne: 13,
+    colonne: 91,
+  };
+  const copie = (o) => JSON.parse(JSON.stringify(o));
+  const miseEnPage = () => ({ ...copie(MISE_EN_PAGE_DEFAUT), ...copie(parametres.miseEnPage || {}) });
+  const placer = (e, pos) => {
+    e.style.left = `${pos.x}mm`;
+    e.style.top = `${pos.y}mm`;
+    return e;
+  };
+
   function rendreDocument(doc, cible) {
+    const mp = { ...copie(MISE_EN_PAGE_DEFAUT), ...copie(doc.miseEnPage || {}) };
     const t = TYPES[doc.type] || TYPES.avis;
     const s = doc.societe || {};
     const emetteur = doc.type === "recu" ? doc.contact : doc.moi;
@@ -111,10 +129,19 @@
       );
 
     const contactSociete = [s.email, s.tel].filter(Boolean).join(" · ");
+    cible.style.setProperty("--interligne", `${mp.interligne}mm`);
+    cible.style.setProperty("--colonne", `${mp.colonne}mm`);
     cible.replaceChildren(
-      s.logo
-        ? el("img", { class: "d-logo", src: s.logo, alt: "", style: `height:${Number(s.logoTaille) || 12}mm` })
-        : el("div", { class: "d-nom-logo", textContent: s.nom || "" }),
+      placer(
+        el(
+          "div",
+          { class: "d-bloc-logo" },
+          s.logo
+            ? el("img", { class: "d-logo", src: s.logo, alt: "", draggable: false, style: `height:${Number(s.logoTaille) || 12}mm` })
+            : el("div", { class: "d-nom-logo", textContent: s.nom || "" })
+        ),
+        mp.logo
+      ),
       el(
         "div",
         { class: "d-titre" },
@@ -140,15 +167,22 @@
         { class: "d-pied" },
         s.nom ? el("div", { textContent: [s.nom, s.adresse].filter(Boolean).join(" — ") }) : null,
         s.siren || contactSociete ? el("div", { textContent: [s.siren ? `SIREN/SIRET ${s.siren}` : "", contactSociete].filter(Boolean).join(" · ") }) : null,
-        s.pied ? el("div", { textContent: s.pied }) : null,
-        el("div", {
-          class: "mention",
-          textContent:
-            `Document généré par ${s.nom || "ma société"} — ne constitue pas une attestation bancaire. ` +
-            `Issued by ${s.nom || "the company"} — not a bank statement.`,
-        })
-      )
+        s.pied ? el("div", { textContent: s.pied }) : null
+      ),
+      el("div", {
+        class: "d-mention",
+        textContent:
+          `Document généré par ${s.nom || "ma société"} — ne constitue pas une attestation bancaire. ` +
+          `Issued by ${s.nom || "the company"} — not a bank statement.`,
+      })
     );
+    // Blocs déplaçables : positions de la mise en page
+    const blocs = { logo: ".d-bloc-logo", titre: ".d-titre", lignes: ".d-lignes", pied: ".d-pied" };
+    for (const [nom, sel] of Object.entries(blocs)) {
+      const e = cible.querySelector(sel);
+      e.dataset.bloc = nom;
+      placer(e, mp[nom]);
+    }
   }
 
   // ---------- Formulaire ----------
@@ -170,6 +204,7 @@
         banque: $("#d-c-banque").value.trim(),
         bic: $("#d-c-bic").value.trim(),
       },
+      miseEnPage: miseEnPage(),
       societe: {
         nom: parametres.nom || "",
         adresse: parametres.adresse || "",
@@ -254,6 +289,60 @@
     sauverBrouillon();
     majApercu();
   }
+
+  // ---------- Modifier la mise en page (glisser les blocs) ----------
+  const PX_PAR_MM = 96 / 25.4;
+  let enEdition = false;
+  let glisse = null;
+
+  function majOutilsEdition() {
+    const mp = miseEnPage();
+    $("#r-interligne").value = mp.interligne;
+    $("#r-colonne").value = mp.colonne;
+    $("#outils-edition").hidden = !enEdition;
+    $("#aide-edition").hidden = !enEdition;
+    $("#btn-edition").hidden = enEdition;
+    feuille.classList.toggle("edition", enEdition);
+  }
+
+  function changerMiseEnPage(modifs) {
+    parametres.miseEnPage = { ...miseEnPage(), ...modifs };
+    sauverParametres();
+  }
+
+  function demarrerEdition() {
+    enEdition = true;
+    surModification(); // l'aperçu montre le formulaire (et non un document déjà généré)
+    majOutilsEdition();
+  }
+
+  feuille.addEventListener("pointerdown", (e) => {
+    if (!enEdition) return;
+    const bloc = e.target.closest("[data-bloc]");
+    if (!bloc) return;
+    e.preventDefault();
+    const echelle = feuille.getBoundingClientRect().width / feuille.offsetWidth;
+    const pos = miseEnPage()[bloc.dataset.bloc];
+    glisse = { bloc, nom: bloc.dataset.bloc, x0: e.clientX, y0: e.clientY, px: pos.x, py: pos.y, k: PX_PAR_MM * echelle };
+    bloc.setPointerCapture(e.pointerId);
+  });
+  feuille.addEventListener("pointermove", (e) => {
+    if (!glisse) return;
+    const largeur = glisse.bloc.offsetWidth / PX_PAR_MM;
+    const hauteur = glisse.bloc.offsetHeight / PX_PAR_MM;
+    const r = (v) => Math.round(v * 2) / 2;
+    // Reste dans la page, au-dessus de la mention du bas
+    const x = Math.min(Math.max(r(glisse.px + (e.clientX - glisse.x0) / glisse.k), 0), Math.max(0, 210 - largeur));
+    const y = Math.min(Math.max(r(glisse.py + (e.clientY - glisse.y0) / glisse.k), 0), Math.max(0, 283 - hauteur));
+    placer(glisse.bloc, { x, y });
+    glisse.pos = { x, y };
+  });
+  const finGlisse = () => {
+    if (glisse?.pos) changerMiseEnPage({ [glisse.nom]: glisse.pos });
+    glisse = null;
+  };
+  feuille.addEventListener("pointerup", finGlisse);
+  feuille.addEventListener("pointercancel", finGlisse);
 
   // ---------- PDF ----------
   function chargerScript(src) {
@@ -636,6 +725,26 @@
     surModification();
   });
   $("#btn-generer").addEventListener("click", generer);
+  $("#btn-edition").addEventListener("click", demarrerEdition);
+  $("#btn-edition-fin").addEventListener("click", () => {
+    enEdition = false;
+    majOutilsEdition();
+  });
+  $("#btn-edition-reset").addEventListener("click", () => {
+    if (!confirm("Remettre la mise en page d'origine ?")) return;
+    parametres.miseEnPage = {};
+    sauverParametres();
+    majOutilsEdition();
+    majApercu();
+  });
+  $("#r-interligne").addEventListener("input", (e) => {
+    changerMiseEnPage({ interligne: Number(e.target.value) });
+    majApercu();
+  });
+  $("#r-colonne").addEventListener("input", (e) => {
+    changerMiseEnPage({ colonne: Number(e.target.value) });
+    majApercu();
+  });
   $("#btn-telecharger").addEventListener("click", () => dernierGenere && telechargerPDF(dernierGenere));
 
   $("#form-contact").addEventListener("submit", enregistrerContact);

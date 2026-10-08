@@ -66,23 +66,38 @@ body { min-height: 100vh; }
   position: relative; width: 210mm; height: 297mm; background: #fff; color: #222;
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; box-sizing: border-box; overflow: hidden;
 }
-.doc-a4 .d-logo { position: absolute; left: 27mm; top: 30mm; max-width: 80mm; object-fit: contain; object-position: left center; }
-.doc-a4 .d-nom-logo { position: absolute; left: 27mm; top: 31mm; font-size: 20pt; font-weight: 600; color: #222; letter-spacing: -.2px; }
-.doc-a4 .d-titre { position: absolute; left: 27mm; top: 74mm; right: 27mm; }
+/* Les positions (left/top) viennent de la mise en page enregistrée (voir paiement.js) */
+.doc-a4 [data-bloc] { position: absolute; }
+.doc-a4 .d-logo { max-width: 80mm; object-fit: contain; object-position: left center; display: block; }
+.doc-a4 .d-nom-logo { font-size: 20pt; font-weight: 600; color: #222; letter-spacing: -.2px; white-space: nowrap; }
+.doc-a4 .d-titre { width: 156mm; }
 .doc-a4 .d-titre h1 { margin: 0; font-size: 14.5pt; font-weight: 700; letter-spacing: .1px; text-transform: uppercase; }
 .doc-a4 .d-titre .en { margin-top: 3mm; font-size: 8.5pt; color: #8a8a8a; text-transform: uppercase; }
 .doc-a4 .d-titre .numero { margin-top: 1.5mm; font-size: 7.5pt; color: #a0a0a0; }
 
-.doc-a4 .d-lignes { position: absolute; left: 27mm; right: 27mm; top: 99mm; }
-.doc-a4 .d-ligne { position: relative; height: 13mm; }
+.doc-a4 .d-lignes { width: 156mm; }
+.doc-a4 .d-ligne { position: relative; height: var(--interligne, 13mm); }
 .doc-a4 .d-libelle { position: absolute; left: 0; top: 0; width: 85mm; }
 .doc-a4 .d-libelle b { display: block; font-size: 10.5pt; font-weight: 700; color: #222; line-height: 1.25; }
 .doc-a4 .d-libelle span { display: block; font-size: 6.8pt; color: #9a9a9a; margin-top: .6mm; }
 .doc-a4 .d-valeur {
-  position: absolute; left: 91mm; right: 0; top: 0; font-size: 10.5pt; color: #333; line-height: 1.25;
+  position: absolute; left: var(--colonne, 91mm); right: 0; top: 0; font-size: 10.5pt; color: #333; line-height: 1.25;
   overflow-wrap: anywhere; word-break: break-word; max-height: 11.5mm; overflow: hidden;
 }
 .doc-a4 .d-valeur.vide { color: #c4c4c4; }
 
-.doc-a4 .d-pied { position: absolute; left: 20mm; right: 20mm; bottom: 12mm; text-align: center; font-size: 7pt; color: #555; line-height: 1.6; }
-.doc-a4 .d-pied .mention { margin-top: 2.5mm; font-size: 6.3pt; color: #9a9a9a; }
+.doc-a4 .d-pied { width: 170mm; text-align: center; font-size: 7pt; color: #555; line-height: 1.6; }
+/* Mention fixe : toujours en bas, au-dessus de tout, non déplaçable */
+.doc-a4 .d-mention {
+  position: absolute; left: 15mm; right: 15mm; bottom: 7mm; z-index: 10; background: #fff;
+  text-align: center; font-size: 6.3pt; color: #9a9a9a; line-height: 1.5;
+}
+
+/* Mode « Modifier la mise en page » */
+.doc-a4.edition [data-bloc] { outline: 1.5px dashed #1f6feb; outline-offset: 1.5mm; cursor: move; touch-action: none; user-select: none; }
+.doc-a4.edition [data-bloc]:hover { outline-style: solid; }
+.barre-edition { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 auto 14px; max-width: 794px; font-size: 13px; color: var(--doux); }
+.barre-edition label { display: flex; align-items: center; gap: 6px; }
+.barre-edition input[type=range] { width: 120px; accent-color: var(--accent); }
+.barre-edition .btn { font-size: 13px; padding: 6px 10px; }
+.barre-edition [hidden] { display: none !important; }

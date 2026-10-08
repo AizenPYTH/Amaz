@@ -42,6 +42,9 @@ Accessible depuis le bouton « 💳 Avis / reçus de paiement » en haut de la p
   - **Avis de paiement / Payment advice** (n° AP-AAAA-0001) : paiement effectué par ta société.
   - **Reçu de paiement / Payment receipt** (n° RP-AAAA-0001) : paiement reçu par ta société.
 - **Historique** : tous les documents générés, avec « Regénérer » (recharge dans le formulaire) et « Télécharger ».
+- **✏ Modifier la mise en page** (au-dessus de l'aperçu) : fais glisser le logo, le titre, le bloc d'informations et le
+  pied de page ; règle l'espacement des lignes et la position de la colonne des valeurs. La mise en page est enregistrée
+  et réutilisée pour tous les documents suivants (« Réinitialiser » revient à l'original). La mention du bas reste fixe.
 - Ta société est toujours l'une des deux parties, et le pied de page indique que le document est émis par elle et
   ne constitue pas une attestation bancaire. Pour prouver un virement auprès d'un tiers, utilise la preuve fournie par ta banque.
 - Les IBAN sont vérifiés (clé de contrôle) ; date au format JJ/MM/AAAA ; montants formatés selon la devise.
