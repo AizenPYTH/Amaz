@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documents de paiement</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💳</text></svg>">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="assets/paiement.css">
+</head>
+<body>
+  <header class="barre">
+    <div class="marque">💳 Documents de paiement</div>
+    <nav class="actions onglets" aria-label="Sections">
+      <a class="btn btn-secondaire" href="index.html">🧾 Factures</a>
+      <button class="btn btn-secondaire onglet actif" type="button" data-onglet="document">Nouveau document</button>
+      <button class="btn btn-secondaire onglet" type="button" data-onglet="contacts">Contacts</button>
+      <button class="btn btn-secondaire onglet" type="button" data-onglet="historique">Historique</button>
+      <button class="btn btn-secondaire onglet" type="button" data-onglet="parametres">Paramètres</button>
+    </nav>
+  </header>
+
+  <!-- ===================== NOUVEAU DOCUMENT ===================== -->
+  <main class="page" id="onglet-document">
+    <section class="formulaire">
+      <h2>Nouveau document</h2>
+      <div id="alerte-parametres" class="alerte" hidden>
+        Commence par renseigner ta société et au moins un de tes comptes dans <a href="#" data-aller="parametres">Paramètres</a>.
+      </div>
+
+      <label>Type de document
+        <select id="d-type">
+          <option value="avis">Avis de paiement — paiement effectué par ma société</option>
+          <option value="recu">Reçu de paiement — paiement reçu par ma société</option>
+        </select>
+      </label>
+
+      <fieldset>
+        <legend id="legende-ma-societe">Émetteur : ma société</legend>
+        <label>Mon compte
+          <select id="d-mon-compte"></select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend id="legende-contact">Bénéficiaire</legend>
+        <label>Contact enregistré
+          <select id="d-contact"></select>
+        </label>
+        <label>Nom<input id="d-c-nom" autocomplete="off"></label>
+        <label>IBAN<input id="d-c-iban" autocomplete="off" spellcheck="false"></label>
+        <div class="deux">
+          <label>Banque<input id="d-c-banque" autocomplete="off"></label>
+          <label>BIC<input id="d-c-bic" autocomplete="off" spellcheck="false"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Paiement</legend>
+        <div class="deux">
+          <label>Date<input id="d-date" type="date"></label>
+          <label>Devise
+            <select id="d-devise">
+              <option>EUR</option><option>USD</option><option>GBP</option><option>CHF</option>
+              <option>CAD</option><option>JPY</option><option>MAD</option><option>XOF</option>
+            </select>
+          </label>
+        </div>
+        <label>Montant<input id="d-montant" inputmode="decimal" placeholder="ex : 7 550,00"></label>
+        <label>Référence<input id="d-reference" placeholder="ex : Facture FR487D-00012"></label>
+      </fieldset>
+
+      <p id="erreur-document" class="erreur" hidden></p>
+      <div class="boutons">
+        <button id="btn-generer" class="btn btn-principal" type="button">Générer le PDF</button>
+        <button id="btn-telecharger" class="btn btn-secondaire" type="button" disabled>Télécharger PDF</button>
+      </div>
+      <p id="etat-document" class="aide"></p>
+    </section>
+
+    <section class="apercu-zone" aria-label="Aperçu">
+      <div class="apercu-cadre" id="cadre"><div id="feuille" class="doc-a4"></div></div>
+    </section>
+  </main>
+
+  <!-- ===================== CONTACTS ===================== -->
+  <main class="page" id="onglet-contacts" hidden>
+    <section class="carte">
+      <h2>Contacts</h2>
+      <p class="aide">Les personnes ou sociétés que tu paies ou qui te paient. Ils se sélectionnent ensuite en un clic dans le document.</p>
+      <form id="form-contact" class="grille-form" autocomplete="off">
+        <input type="hidden" id="c-id">
+        <label>Nom *<input id="c-nom" required></label>
+        <label>IBAN<input id="c-iban" spellcheck="false"></label>
+        <label>Banque<input id="c-banque"></label>
+        <label>BIC<input id="c-bic" spellcheck="false"></label>
+        <label class="large">Adresse (facultatif)<input id="c-adresse"></label>
+        <div class="boutons large">
+          <button class="btn btn-principal" type="submit" id="btn-contact-ok">Ajouter le contact</button>
+          <button class="btn btn-secondaire" type="button" id="btn-contact-annuler" hidden>Annuler la modification</button>
+        </div>
+      </form>
+      <p id="erreur-contact" class="erreur" hidden></p>
+      <table class="liste">
+        <thead><tr><th>Nom</th><th>IBAN</th><th>Banque</th><th>BIC</th><th></th></tr></thead>
+        <tbody id="liste-contacts"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- ===================== HISTORIQUE ===================== -->
+  <main class="page" id="onglet-historique" hidden>
+    <section class="carte">
+      <h2>Historique</h2>
+      <table class="liste">
+        <thead><tr><th>N°</th><th>Type</th><th>Date</th><th class="num">Montant</th><th>Émetteur</th><th>Bénéficiaire</th><th>Référence</th><th></th></tr></thead>
+        <tbody id="liste-historique"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- ===================== PARAMÈTRES ===================== -->
+  <main class="page" id="onglet-parametres" hidden>
+    <section class="carte">
+      <h2>Paramètres — ma société</h2>
+      <form id="form-parametres" class="grille-form" autocomplete="off">
+        <div class="large logo-ligne">
+          <img id="p-apercu-logo" alt="">
+          <label class="fichier">Choisir mon logo<input id="p-logo" type="file" accept="image/*"></label>
+          <button class="btn btn-secondaire" type="button" id="btn-logo-factures">Reprendre le logo des factures</button>
+          <button class="btn btn-secondaire" type="button" id="btn-logo-retirer">Retirer le logo</button>
+        </div>
+        <label>Taille du logo (mm)<input id="p-logo-taille" type="number" min="5" max="40" step="0.5"></label>
+        <label>Nom de l'entreprise *<input id="p-nom" required></label>
+        <label class="large">Adresse<input id="p-adresse"></label>
+        <label>SIREN / SIRET<input id="p-siren"></label>
+        <label>Email<input id="p-email" type="email"></label>
+        <label>Téléphone<input id="p-tel"></label>
+        <label class="large">Texte du pied de page (facultatif)<input id="p-pied" placeholder="ex : SAS au capital de 1 000 € — RCS Paris"></label>
+      </form>
+      <button class="btn btn-secondaire" type="button" id="btn-reprendre-factures">Reprendre les infos de « Mon entreprise » (factures)</button>
+      <p class="aide">Titres des documents (fixes) : « AVIS DE PAIEMENT / PAYMENT ADVICE » pour un paiement effectué,
+        « REÇU DE PAIEMENT / PAYMENT RECEIPT » pour un paiement reçu. Chaque document indique en bas de page qu'il est
+        émis par ta société et ne constitue pas une attestation bancaire.</p>
+    </section>
+
+    <section class="carte">
+      <h2>Mes comptes bancaires</h2>
+      <p class="aide">Les comptes de ta société, utilisés comme émetteur (avis de paiement) ou bénéficiaire (reçu).</p>
+      <form id="form-compte" class="grille-form" autocomplete="off">
+        <input type="hidden" id="m-id">
+        <label>Libellé *<input id="m-libelle" placeholder="ex : Compte principal" required></label>
+        <label>IBAN *<input id="m-iban" spellcheck="false" required></label>
+        <label>Banque<input id="m-banque"></label>
+        <label>BIC<input id="m-bic" spellcheck="false"></label>
+        <div class="boutons large">
+          <button class="btn btn-principal" type="submit" id="btn-compte-ok">Ajouter le compte</button>
+          <button class="btn btn-secondaire" type="button" id="btn-compte-annuler" hidden>Annuler la modification</button>
+        </div>
+      </form>
+      <p id="erreur-compte" class="erreur" hidden></p>
+      <table class="liste">
+        <thead><tr><th>Libellé</th><th>IBAN</th><th>Banque</th><th>BIC</th><th></th></tr></thead>
+        <tbody id="liste-comptes"></tbody>
+      </table>
+      <p id="etat-parametres" class="aide"></p>
+    </section>
+  </main>
+
+  <script src="assets/paiement.js"></script>
+</body>
+</html>

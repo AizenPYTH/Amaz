@@ -30,6 +30,23 @@ Le modèle, le logo et la police ne bougent pas : seules les infos saisies chang
 - **☁ Synchroniser** : retrouve tes réglages, ton logo, tes clients et tes factures sur tous tes ordinateurs (voir plus bas)
 - **💾 Télécharger mes réglages** (dans « Mon entreprise ») : une copie de ton logo, de tes infos, de tes clients et de tes factures dans un fichier, à restaurer en 1 clic
 
+## 💳 Avis et reçus de paiement (page `paiements.html`)
+
+Accessible depuis le bouton « 💳 Avis / reçus de paiement » en haut de la page des factures.
+
+- **Paramètres** : ta société (logo, nom, adresse, SIREN/SIRET, email, téléphone, texte de pied de page) et tes comptes
+  bancaires (libellé, IBAN, banque, BIC). Bouton pour reprendre les infos et le logo de « Mon entreprise ».
+- **Contacts** : les personnes ou sociétés que tu paies ou qui te paient (nom, IBAN, banque, BIC, adresse) — ajouter, modifier, supprimer.
+- **Nouveau document** : tu choisis le type, ton compte, le contact, la date, le montant, la devise et la référence ;
+  l'aperçu A4 se met à jour en direct, « Générer le PDF » le numérote, l'enregistre dans l'historique et le télécharge.
+  - **Avis de paiement / Payment advice** (n° AP-AAAA-0001) : paiement effectué par ta société.
+  - **Reçu de paiement / Payment receipt** (n° RP-AAAA-0001) : paiement reçu par ta société.
+- **Historique** : tous les documents générés, avec « Regénérer » (recharge dans le formulaire) et « Télécharger ».
+- Ta société est toujours l'une des deux parties, et le pied de page indique que le document est émis par elle et
+  ne constitue pas une attestation bancaire. Pour prouver un virement auprès d'un tiers, utilise la preuve fournie par ta banque.
+- Les IBAN sont vérifiés (clé de contrôle) ; date au format JJ/MM/AAAA ; montants formatés selon la devise.
+- Stockage local dans le navigateur (pas encore inclus dans la synchronisation ni dans le fichier de sauvegarde).
+
 ## Mettre en ligne sur Vercel
 
 1. Va sur [vercel.com/new](https://vercel.com/new) et importe ce dépôt GitHub.

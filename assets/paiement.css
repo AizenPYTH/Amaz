@@ -1,0 +1,88 @@
+/* ============================================================
+   DOCUMENTS DE PAIEMENT — interface + document A4
+   ============================================================ */
+
+body { min-height: 100vh; }
+.onglets .actif { background: var(--accent); border-color: var(--accent); color: var(--accent-texte); }
+.onglets a.btn { text-decoration: none; }
+
+.page { flex: 1; min-height: 0; }
+.page[hidden] { display: none !important; }
+#onglet-document { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; }
+#onglet-contacts, #onglet-historique, #onglet-parametres { padding: 20px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+
+.formulaire { background: var(--panneau); border-right: 1px solid var(--bord); padding: 16px 18px 24px; overflow-y: auto; }
+.formulaire h2, .carte h2 { margin: 0 0 12px; font-size: 18px; }
+.carte { width: min(1000px, 100%); background: var(--panneau); border: 1px solid var(--bord); border-radius: 12px; padding: 16px 18px; }
+
+.formulaire label, .grille-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--doux); margin-top: 10px; }
+.formulaire input, .formulaire select, .grille-form input, .grille-form select {
+  font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 6px; width: 100%;
+  border: 1px solid var(--bord); background: var(--fond); color: var(--texte);
+}
+.formulaire input:focus, .formulaire select:focus, .grille-form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.formulaire fieldset { border: 1px solid var(--bord); border-radius: 10px; margin: 14px 0 0; padding: 4px 12px 12px; }
+.formulaire legend { font-weight: 600; font-size: 14px; padding: 0 4px; color: var(--texte); }
+.deux { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.boutons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.aide { font-size: 12.5px; color: var(--doux); margin: 8px 0 0; }
+.erreur { color: var(--erreur); font-size: 13.5px; margin: 10px 0 0; }
+.alerte { background: #fff7e0; color: #7a5600; border-radius: 8px; padding: 10px 12px; font-size: 13.5px; }
+.alerte a { color: inherit; font-weight: 600; }
+
+.grille-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.grille-form .large { grid-column: 1 / -1; }
+.logo-ligne { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.logo-ligne label.fichier {
+  flex-direction: row; cursor: pointer; color: var(--accent); border: 1px dashed var(--accent);
+  border-radius: 8px; padding: 8px 12px; margin: 0; font-size: 14px;
+}
+.logo-ligne label.fichier input { display: none; }
+#p-apercu-logo { max-height: 48px; max-width: 200px; background: #fff; padding: 4px; border-radius: 6px; border: 1px solid var(--bord); }
+#p-apercu-logo:not([src]), #p-apercu-logo[src=""] { display: none; }
+
+.liste { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 14px; }
+.liste th, .liste td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--bord); vertical-align: middle; }
+.liste td.num, .liste th.num { text-align: right; white-space: nowrap; }
+.liste td.iban { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; word-break: break-all; }
+.liste .actions-ligne { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.liste .btn { font-size: 12.5px; padding: 4px 9px; }
+.liste .vide td { color: var(--doux); text-align: center; padding: 18px; }
+
+.apercu-zone { overflow: auto; padding: 24px; min-height: 0; }
+.apercu-cadre { margin: 0 auto; }
+#feuille { box-shadow: 0 2px 16px rgba(0,0,0,.18); transform-origin: top left; }
+
+@media (max-width: 900px) {
+  #onglet-document { grid-template-columns: 1fr; }
+  .formulaire { border-right: 0; border-bottom: 1px solid var(--bord); }
+  .apercu-zone { padding: 16px; overflow-x: hidden; }
+  .grille-form, .deux { grid-template-columns: 1fr; }
+  .liste { display: block; overflow-x: auto; }
+}
+
+/* ---------------- Document A4 ---------------- */
+.doc-a4 {
+  position: relative; width: 210mm; height: 297mm; background: #fff; color: #222;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; box-sizing: border-box; overflow: hidden;
+}
+.doc-a4 .d-logo { position: absolute; left: 27mm; top: 30mm; max-width: 80mm; object-fit: contain; object-position: left center; }
+.doc-a4 .d-nom-logo { position: absolute; left: 27mm; top: 31mm; font-size: 20pt; font-weight: 600; color: #222; letter-spacing: -.2px; }
+.doc-a4 .d-titre { position: absolute; left: 27mm; top: 74mm; right: 27mm; }
+.doc-a4 .d-titre h1 { margin: 0; font-size: 14.5pt; font-weight: 700; letter-spacing: .1px; text-transform: uppercase; }
+.doc-a4 .d-titre .en { margin-top: 3mm; font-size: 8.5pt; color: #8a8a8a; text-transform: uppercase; }
+.doc-a4 .d-titre .numero { margin-top: 1.5mm; font-size: 7.5pt; color: #a0a0a0; }
+
+.doc-a4 .d-lignes { position: absolute; left: 27mm; right: 27mm; top: 99mm; }
+.doc-a4 .d-ligne { position: relative; height: 13mm; }
+.doc-a4 .d-libelle { position: absolute; left: 0; top: 0; width: 85mm; }
+.doc-a4 .d-libelle b { display: block; font-size: 10.5pt; font-weight: 700; color: #222; line-height: 1.25; }
+.doc-a4 .d-libelle span { display: block; font-size: 6.8pt; color: #9a9a9a; margin-top: .6mm; }
+.doc-a4 .d-valeur {
+  position: absolute; left: 91mm; right: 0; top: 0; font-size: 10.5pt; color: #333; line-height: 1.25;
+  overflow-wrap: anywhere; word-break: break-word; max-height: 11.5mm; overflow: hidden;
+}
+.doc-a4 .d-valeur.vide { color: #c4c4c4; }
+
+.doc-a4 .d-pied { position: absolute; left: 20mm; right: 20mm; bottom: 12mm; text-align: center; font-size: 7pt; color: #555; line-height: 1.6; }
+.doc-a4 .d-pied .mention { margin-top: 2.5mm; font-size: 6.3pt; color: #9a9a9a; }
